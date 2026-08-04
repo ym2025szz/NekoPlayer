@@ -80,11 +80,11 @@ jobs:
             ./artifacts/publish/linux-x64/NekoPlayer >"$gui_log" 2>&1 & app_pid=$!
             for i in $(seq 1 30); do
               if ! kill -0 "$app_pid" 2>/dev/null; then cat "$gui_log"; wait "$app_pid"; exit 1; fi
-              window_id=$(xdotool search --onlyvisible --pid "$app_pid" 2>/dev/null | head -n 1 || true)
+              window_id=$(xdotool search --onlyvisible --name ".*" 2>/dev/null | head -n 1 || true)
               [[ -n "$window_id" ]] && break
               sleep 1
             done
-            if [[ -z "${window_id:-}" ]]; then cat "$gui_log"; kill "$app_pid"; wait "$app_pid" || true; exit 1; fi
+            if [[ -z "${window_id:-}" ]]; then cat "$gui_log"; xwininfo -root -tree || true; kill "$app_pid"; wait "$app_pid" || true; exit 1; fi
             xdotool windowclose "$window_id"
             for i in $(seq 1 30); do
               ! kill -0 "$app_pid" 2>/dev/null && break
