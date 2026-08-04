@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Install verified Windows FFmpeg Shared runtime
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./setup-ffmpeg.ps1
+      - name: Build, test, and package Windows x64
+        shell: pwsh
+        run: ./publish-win-x64.ps1
+      - name: Generate temporary playback fixtures
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\neko-audio" -Force | Out-Null
+          ./tools/ffmpeg/ffmpeg.exe -y -f lavfi -i "sine=frequency=440:duration=8" "$env:RUNNER_TEMP\neko-audio\track-a.mp3"
+          ./tools/ffmpeg/ffmpeg.exe -y -f lavfi -i "sine=frequency=660:duration=8" "$env:RUNNER_TEMP\neko-audio\track-b.mp3"
+      - name: Windows playback pipeline
+        shell: pwsh
+        run: ./test-real-playback.ps1 -AudioDirectory "$env:RUNNER_TEMP\neko-audio" -Volume 0.05
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NekoPlayer-v1.0.0-win-x64
+          path: artifacts/release/NekoPlayer-v1.0.0-win-x64.zip
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Install Linux runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg file xvfb xdotool libx11-6 libice6 libsm6 libfontconfig1 libfreetype6 libxrandr2 libxi6 libxcursor1 libxext6 libxrender1 libgl1 libgtk-3-0
+      - name: Build, test, and package Linux x64
+        run: |
+          chmod +x ./publish-linux-x64.sh ./packaging/linux/*.sh
+          ./publish-linux-x64.sh
+      - name: Generate temporary playback fixtures
+        run: |
+          mkdir -p "$RUNNER_TEMP/猫娘 音频"
+          ffmpeg -y -f lavfi -i "sine=frequency=440:duration=12" "$RUNNER_TEMP/猫娘 音频/track-a.mp3"
+          ffmpeg -y -f lavfi -i "sine=frequency=660:duration=12" "$RUNNER_TEMP/猫娘 音频/track-b.mp3"
+      - name: Linux import and duplicate-detection pipeline
+        env:
+          NEKOPLAYER_DATA_ROOT: ${{ runner.temp }}/neko-import-data
+        run: dotnet run --project tools/NekoPlayer.ImportVerifier/NekoPlayer.ImportVerifier.csproj -c Release --no-build -- --audio-directory "$RUNNER_TEMP/猫娘 音频"
+      - name: Linux playback pipeline with null audio output
+        env:
+          NEKOPLAYER_LINUX_AUDIO_DEVICE: 'null'
+          NEKOPLAYER_DATA_ROOT: ${{ runner.temp }}/neko-playback-data
+        run: dotnet run --project tools/NekoPlayer.PlaybackVerifier/NekoPlayer.PlaybackVerifier.csproj -c Release --no-build -- --audio-directory "$RUNNER_TEMP/猫娘 音频" --volume 0.05
+      - name: Linux Xvfb GUI startup and normal close
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/neko-xdg/data
+          XDG_CONFIG_HOME: ${{ runner.temp }}/neko-xdg/config
+          XDG_CACHE_HOME: ${{ runner.temp }}/neko-xdg/cache
+          NEKOPLAYER_LINUX_AUDIO_DEVICE: 'null'
+        run: |
+          xvfb-run -a bash -euo pipefail -c '
+            ./artifacts/publish/linux-x64/NekoPlayer & app_pid=$!
+            for i in $(seq 1 30); do
+              window_id=$(xdotool search --name "猫娘播放器" 2>/dev/null | head -n 1 || true)
+              [[ -n "$window_id" ]] && break
+              sleep 1
+            done
+            [[ -n "${window_id:-}" ]]
+            xdotool windowclose "$window_id"
+            wait "$app_pid"
+          '
+          test -f "$XDG_DATA_HOME/NekoPlayer/nekoplayer.db"
+          test -d "$XDG_CONFIG_HOME/NekoPlayer"
+          test -d "$XDG_CACHE_HOME/NekoPlayer"
+          ! find ./artifacts/publish/linux-x64 -type f \( -name '*.db' -o -name '*.db-wal' -o -name '*.db-shm' \) | grep -q .
+          ! pgrep -x NekoPlayer
+          ! pgrep -x ffmpeg
+          ! pgrep -x ffprobe
+      - name: Validate Linux installer preserves user data
+        run: |
+          test_home="$RUNNER_TEMP/neko install home"
+          mkdir -p "$test_home/.local/share/NekoPlayer"
+          printf 'preserve' > "$test_home/.local/share/NekoPlayer/user-data-marker"
+          HOME="$test_home" ./artifacts/publish/linux-x64/install-linux.sh
+          grep -F "Exec=\"$test_home/.local/opt/NekoPlayer/NekoPlayer\"" "$test_home/.local/share/applications/nekoplayer.desktop"
+          HOME="$test_home" "$test_home/.local/opt/NekoPlayer/uninstall-linux.sh"
+          test -f "$test_home/.local/share/NekoPlayer/user-data-marker"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NekoPlayer-v1.0.0-linux-x64
+          path: artifacts/release/NekoPlayer-v1.0.0-linux-x64.tar.gz
+          if-no-files-found: error
