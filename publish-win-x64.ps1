@@ -86,7 +86,7 @@ try {
     if (-not (Test-Path -LiteralPath $application)) { throw 'NekoPlayer.exe is missing.' }
     if (-not (Test-FfmpegRuntime $ffmpegTarget)) { throw 'Published FFmpeg Shared runtime is incomplete.' }
     $version = (Get-Item -LiteralPath $application).VersionInfo
-    if ($version.FileVersion -ne '1.0.0.0' -or $version.ProductVersion -notlike '1.0.0*') {
+    if ($version.FileVersion -ne '1.0.0.0' -or $version.ProductVersion -ne '1.0.0') {
         throw "Incorrect application version: FileVersion=$($version.FileVersion), ProductVersion=$($version.ProductVersion)"
     }
     foreach ($required in @('README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'Assets\AppIcon.png', 'Assets\NekoPlayer.ico', 'NekoPlayer.deps.json')) {

@@ -271,6 +271,7 @@ public sealed class V100SourceContractTests
     [Fact] public void AssemblyVersionIsOnePointZero() => Assert.Contains("<AssemblyVersion>1.0.0.0</AssemblyVersion>", SourceContracts.Read(@"src\NekoPlayer.App\NekoPlayer.App.csproj"));
     [Fact] public void FileVersionIsOnePointZero() => Assert.Contains("<FileVersion>1.0.0.0</FileVersion>", SourceContracts.Read(@"src\NekoPlayer.App\NekoPlayer.App.csproj"));
     [Fact] public void InformationalVersionIsOnePointZero() => Assert.Contains("<InformationalVersion>1.0.0</InformationalVersion>", SourceContracts.Read(@"src\NekoPlayer.App\NekoPlayer.App.csproj"));
+    [Fact] public void ProductVersionDoesNotAppendCommitSha() => Assert.Contains("<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>", SourceContracts.Read(@"src\NekoPlayer.App\NekoPlayer.App.csproj"));
     [Fact] public void LeftFooterHasNoReleaseSubtitle() { var text = SourceContracts.Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"); Assert.DoesNotContain("响应式交互版", text); Assert.DoesNotContain("播放控制与曲库操作修复版", text); }
     [Fact] public void SettingsShowsOnlyDisplayVersion() { var text = SourceContracts.Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"); Assert.DoesNotContain("应用版本：", text); Assert.Contains("StringFormat='v{0}'", text); }
     [Fact] public void CreatorRemainsExact() => Assert.Contains("创作者：梦怀殇", SourceContracts.Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"));

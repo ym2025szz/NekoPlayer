@@ -97,6 +97,7 @@ public sealed class ReleaseInfrastructureContractTests
         Assert.Contains("Avalonia.Diagnostics", script);
         Assert.Contains("$privateMatches.Count -gt 0", script);
         Assert.DoesNotContain("Select-String -Pattern $privatePattern -Quiet", script);
+        Assert.Contains("$version.ProductVersion -ne '1.0.0'", script);
     }
 
     [Fact]
