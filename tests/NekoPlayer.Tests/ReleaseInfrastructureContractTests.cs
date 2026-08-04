@@ -113,6 +113,8 @@ public sealed class ReleaseInfrastructureContractTests
         var workflow = SourceContracts.Read(@".github\workflows\ci.yml");
         Assert.Contains("-HeadlessNullOutput", workflow);
         Assert.Contains("xvfb-run -a ./publish-linux-x64.sh", workflow);
+        Assert.Contains("xdotool search --onlyvisible --pid", workflow);
+        Assert.DoesNotContain("xdotool search --name", workflow);
         var verifier = SourceContracts.Read(@"tools\NekoPlayer.PlaybackVerifier\Program.cs");
         Assert.Contains("--headless-null-output", verifier);
         Assert.Contains("new LinuxFfmpegAudioPlayerService(locator)", verifier);
