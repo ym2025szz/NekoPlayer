@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory)]
     [string]$AudioDirectory,
     [ValidateRange(0.0, 1.0)]
-    [double]$Volume = 0.15
+    [double]$Volume = 0.15,
+    [switch]$HeadlessNullOutput
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,7 +35,9 @@ try {
 
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    $output = & dotnet run --project $verifierProject -c Release --no-build -- --audio-directory $AudioDirectory --volume $Volume 2>&1
+    $runArguments = @('run', '--project', $verifierProject, '-c', 'Release', '--no-build', '--', '--audio-directory', $AudioDirectory, '--volume', $Volume.ToString([Globalization.CultureInfo]::InvariantCulture))
+    if ($HeadlessNullOutput) { $runArguments += '--headless-null-output' }
+    $output = & dotnet @runArguments 2>&1
     $exitCode = $LASTEXITCODE
     $ErrorActionPreference = $previousErrorActionPreference
     $output | ForEach-Object { Write-Host $_ }

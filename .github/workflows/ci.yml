@@ -32,7 +32,7 @@ jobs:
           ./tools/ffmpeg/ffmpeg.exe -y -f lavfi -i "sine=frequency=660:duration=8" "$env:RUNNER_TEMP\neko-audio\track-b.mp3"
       - name: Windows playback pipeline
         shell: pwsh
-        run: ./test-real-playback.ps1 -AudioDirectory "$env:RUNNER_TEMP\neko-audio" -Volume 0.05
+        run: ./test-real-playback.ps1 -AudioDirectory "$env:RUNNER_TEMP\neko-audio" -Volume 0.05 -HeadlessNullOutput
       - uses: actions/upload-artifact@v4
         with:
           name: NekoPlayer-v1.0.0-win-x64
@@ -53,7 +53,7 @@ jobs:
       - name: Build, test, and package Linux x64
         run: |
           chmod +x ./publish-linux-x64.sh ./packaging/linux/*.sh
-          ./publish-linux-x64.sh
+          xvfb-run -a ./publish-linux-x64.sh
       - name: Generate temporary playback fixtures
         run: |
           mkdir -p "$RUNNER_TEMP/猫娘 音频"
