@@ -1,0 +1,18 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="NekoPlayer.App.Controls.DefaultCover">
+  <Border CornerRadius="12" ClipToBounds="True">
+    <Border.Background>
+      <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#1B2D32" Offset="0"/><GradientStop Color="#168D89" Offset="0.7"/><GradientStop Color="#FF6FAE" Offset="1"/>
+      </LinearGradientBrush>
+    </Border.Background>
+    <Grid>
+      <Ellipse Width="72" Height="72" Stroke="#5EE8DE" StrokeThickness="4" Opacity="0.78"/>
+      <PathIcon Width="42" Height="42" Foreground="#F2FAFA" Data="M 7,3 V 13 A 4,4 0 1 0 10,17 V 7 L 17,5 V 12 A 4,4 0 1 0 20,16 V 2 Z"/>
+      <Canvas HorizontalAlignment="Center" VerticalAlignment="Top" Width="110" Height="45">
+        <Polygon Points="10,34 28,2 46,34" Fill="#39C5BB"/><Polygon Points="64,34 82,2 100,34" Fill="#39C5BB"/>
+      </Canvas>
+    </Grid>
+  </Border>
+</UserControl>

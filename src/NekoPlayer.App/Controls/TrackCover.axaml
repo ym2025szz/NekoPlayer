@@ -1,0 +1,12 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:NekoPlayer.App.Controls"
+             x:Class="NekoPlayer.App.Controls.TrackCover"
+             AutomationProperties.Name="猫娘播放器默认歌曲封面">
+  <Border x:Name="CoverBorder" Background="#162328" CornerRadius="12" ClipToBounds="True">
+    <Grid>
+      <controls:DefaultCover/>
+      <Image x:Name="CoverImage" Stretch="Uniform"/>
+    </Grid>
+  </Border>
+</UserControl>
