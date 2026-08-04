@@ -172,7 +172,7 @@ public sealed class LibraryRemovalPersistenceTests
 public sealed class V014SourceContractTests
 {
     private static readonly string Root = FindRoot();
-    private static string Read(string relative) => File.ReadAllText(Path.Combine(Root, relative));
+    private static string Read(string relative) => File.ReadAllText(Path.Combine(Root, relative.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar)));
 
     [Fact] public void SeekControlUsesHandledEventsToo() => Assert.Contains("handledEventsToo: true", Read(@"src\NekoPlayer.App\Controls\PlaybackSeekSlider.cs"));
     [Fact] public void SeekControlOwnsFullHitSurface() => Assert.Contains("DrawRectangle(Brushes.Transparent", Read(@"src\NekoPlayer.App\Controls\PlaybackSeekSlider.cs"));

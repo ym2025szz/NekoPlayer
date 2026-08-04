@@ -88,9 +88,8 @@ public sealed class InteractionStateTests
     {
         using var coordinator = new SeekRequestCoordinator();
         var committed = new List<TimeSpan>();
-        var first = coordinator.SubmitAsync(TimeSpan.FromSeconds(10), (value, _) => { committed.Add(value); return Task.CompletedTask; }, TimeSpan.FromMilliseconds(80));
-        await Task.Delay(10);
-        var second = coordinator.SubmitAsync(TimeSpan.FromSeconds(25), (value, _) => { committed.Add(value); return Task.CompletedTask; }, TimeSpan.FromMilliseconds(30));
+        var first = coordinator.SubmitAsync(TimeSpan.FromSeconds(10), (value, _) => { committed.Add(value); return Task.CompletedTask; }, TimeSpan.FromSeconds(5));
+        var second = coordinator.SubmitAsync(TimeSpan.FromSeconds(25), (value, _) => { committed.Add(value); return Task.CompletedTask; }, TimeSpan.Zero);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
         await second;
         Assert.Equal([TimeSpan.FromSeconds(25)], committed);

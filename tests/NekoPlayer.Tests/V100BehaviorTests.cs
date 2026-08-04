@@ -285,9 +285,10 @@ public sealed class V100SourceContractTests
 internal static class SourceContracts
 {
     public static string Root { get; } = FindRoot();
-    public static string Read(string relative) => File.ReadAllText(Path.Combine(Root, relative));
+    public static string Read(string relative) => File.ReadAllText(Path.Combine(Root, Normalize(relative)));
     public static int Count(string text, string value) => (text.Length - text.Replace(value, string.Empty).Length) / value.Length;
     public static string LineContaining(string text, string value) => text.Split('\n').Single(line => line.Contains(value, StringComparison.Ordinal));
+    private static string Normalize(string relative) => relative.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
     private static string FindRoot() { for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent) if (File.Exists(Path.Combine(d.FullName, "NekoPlayer.sln"))) return d.FullName; throw new DirectoryNotFoundException(); }
 }
 
