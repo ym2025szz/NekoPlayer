@@ -77,6 +77,16 @@ public sealed class ReleaseInfrastructureContractTests
     }
 
     [Fact]
+    public void LinuxPackageScanAllowsSqliteRuntimeAssembliesButRejectsDatabaseFiles()
+    {
+        var script = SourceContracts.Read("publish-linux-x64.sh");
+        Assert.DoesNotContain("*.sqlite*", script);
+        Assert.Contains("*.sqlite3", script);
+        Assert.Contains("*.db-wal", script);
+        Assert.Contains("*.db-shm", script);
+    }
+
+    [Fact]
     public void WindowsPackageRejectsUserDataAndLocalPaths()
     {
         var script = SourceContracts.Read("publish-win-x64.ps1");

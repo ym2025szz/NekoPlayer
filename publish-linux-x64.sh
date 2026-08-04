@@ -54,7 +54,7 @@ if ldd "$publish_dir/NekoPlayer" | grep -q 'not found'; then ldd "$publish_dir/N
 if find "$publish_dir" -type f \( -iname 'ffmpeg.exe' -o -iname 'ffprobe.exe' -o -iname 'avcodec-*.dll' -o -iname 'avformat-*.dll' -o -iname 'avutil-*.dll' -o -iname 'swresample-*.dll' \) | grep -q .; then
   echo "Windows FFmpeg runtime leaked into Linux package" >&2; exit 1
 fi
-if find "$publish_dir" -type f \( -iname '*.pdb' -o -iname '*.db' -o -iname '*.sqlite*' -o -iname '*.mp3' -o -iname '*.flac' -o -iname '*.wav' -o -iname '*.m4a' -o -iname '*.aac' -o -iname '*.ogg' -o -iname '*.opus' -o -iname '*.wma' -o -iname '*.ape' -o -iname '*.log' -o -iname '*.dmp' \) | grep -q .; then
+if find "$publish_dir" -type f \( -iname '*.pdb' -o -iname '*.db' -o -iname '*.db-wal' -o -iname '*.db-shm' -o -iname '*.sqlite' -o -iname '*.sqlite3' -o -iname '*.sqlite-wal' -o -iname '*.sqlite-shm' -o -iname '*.mp3' -o -iname '*.flac' -o -iname '*.wav' -o -iname '*.m4a' -o -iname '*.aac' -o -iname '*.ogg' -o -iname '*.opus' -o -iname '*.wma' -o -iname '*.ape' -o -iname '*.log' -o -iname '*.dmp' \) | grep -q .; then
   echo "Forbidden user, test, or debug file found in Linux package" >&2; exit 1
 fi
 private_pattern='C:\\Users\\|C:/Users/|C:\\codex'
