@@ -113,6 +113,7 @@ public sealed class ReleaseInfrastructureContractTests
         var workflow = SourceContracts.Read(@".github\workflows\ci.yml");
         Assert.Contains("-HeadlessNullOutput", workflow);
         Assert.Contains("xvfb-run -a ./publish-linux-x64.sh", workflow);
+        Assert.Contains("openbox --sm-disable", workflow);
         Assert.Contains("xdotool search --onlyvisible --name \".*\"", workflow);
         Assert.DoesNotContain("xdotool search --name \"猫娘播放器\"", workflow);
         var verifier = SourceContracts.Read(@"tools\NekoPlayer.PlaybackVerifier\Program.cs");
