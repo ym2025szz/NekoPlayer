@@ -115,6 +115,7 @@ public sealed class ReleaseInfrastructureContractTests
         Assert.Contains("xvfb-run -a ./publish-linux-x64.sh", workflow);
         Assert.Contains("openbox --sm-disable", workflow);
         Assert.Contains("xdotool search --onlyvisible --name \".*\"", workflow);
+        Assert.Contains("xdotool key --clearmodifiers alt+F4", workflow);
         Assert.DoesNotContain("xdotool search --name \"猫娘播放器\"", workflow);
         var verifier = SourceContracts.Read(@"tools\NekoPlayer.PlaybackVerifier\Program.cs");
         Assert.Contains("--headless-null-output", verifier);

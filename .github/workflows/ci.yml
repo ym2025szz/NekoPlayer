@@ -87,7 +87,8 @@ jobs:
               sleep 1
             done
             if [[ -z "${window_id:-}" ]]; then cat "$gui_log"; xwininfo -root -tree || true; kill "$app_pid"; wait "$app_pid" || true; exit 1; fi
-            xdotool windowclose "$window_id"
+            xdotool windowactivate --sync "$window_id"
+            xdotool key --clearmodifiers alt+F4
             for i in $(seq 1 30); do
               ! kill -0 "$app_pid" 2>/dev/null && break
               sleep 0.5
