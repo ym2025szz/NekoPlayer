@@ -23,7 +23,9 @@ namespace NekoPlayer.App;
 
 public partial class App : Application
 {
+    public const string GuiSmokeCloseDelayEnvironmentVariable = "NEKOPLAYER_GUI_SMOKE_CLOSE_MS";
     private IHost? _host;
+    private DispatcherTimer? _guiSmokeCloseTimer;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -62,11 +64,25 @@ public partial class App : Application
             var locator = _host.Services.GetRequiredService<IFfmpegLocator>();
             locator.Configure();
             desktop.MainWindow = new MainWindow { DataContext = _host.Services.GetRequiredService<MainWindowViewModel>() };
+            ScheduleGuiSmokeClose(desktop);
             desktop.Exit += (_, _) => { Log.Information("猫娘播放器退出"); _host.Dispose(); Log.CloseAndFlush(); };
             Dispatcher.UIThread.UnhandledException += (_, e) => { Log.Fatal(e.Exception, "UI 线程未处理异常"); e.Handled = true; };
             TaskScheduler.UnobservedTaskException += (_, e) => { Log.Error(e.Exception, "后台任务未观察异常"); e.SetObserved(); };
         }
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private void ScheduleGuiSmokeClose(IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var rawDelay = Environment.GetEnvironmentVariable(GuiSmokeCloseDelayEnvironmentVariable);
+        if (!int.TryParse(rawDelay, out var delayMilliseconds) || delayMilliseconds is < 100 or > 30000) return;
+        _guiSmokeCloseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(delayMilliseconds) };
+        _guiSmokeCloseTimer.Tick += (_, _) =>
+        {
+            _guiSmokeCloseTimer?.Stop();
+            desktop.MainWindow?.Close();
+        };
+        _guiSmokeCloseTimer.Start();
     }
 
     private static void DisableAvaloniaDataAnnotationValidation()

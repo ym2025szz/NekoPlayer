@@ -113,13 +113,15 @@ public sealed class ReleaseInfrastructureContractTests
         var workflow = SourceContracts.Read(@".github\workflows\ci.yml");
         Assert.Contains("-HeadlessNullOutput", workflow);
         Assert.Contains("xvfb-run -a ./publish-linux-x64.sh", workflow);
-        Assert.Contains("openbox --sm-disable", workflow);
         Assert.Contains("xdotool search --onlyvisible --name \".*\"", workflow);
-        Assert.Contains("xdotool key --clearmodifiers alt+F4", workflow);
         Assert.DoesNotContain("xdotool search --name \"猫娘播放器\"", workflow);
+        Assert.Contains("NEKOPLAYER_GUI_SMOKE_CLOSE_MS: '5000'", workflow);
         var verifier = SourceContracts.Read(@"tools\NekoPlayer.PlaybackVerifier\Program.cs");
         Assert.Contains("--headless-null-output", verifier);
         Assert.Contains("new LinuxFfmpegAudioPlayerService(locator)", verifier);
+        var app = SourceContracts.Read(@"src\NekoPlayer.App\App.axaml.cs");
+        Assert.Contains("GuiSmokeCloseDelayEnvironmentVariable", app);
+        Assert.Contains("desktop.MainWindow?.Close()", app);
     }
 
     [Fact]
