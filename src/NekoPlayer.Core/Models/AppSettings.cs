@@ -16,8 +16,12 @@ public sealed class AppSettings
     public int SpectrumFps { get; set; } = 30;
     public double WindowWidth { get; set; } = 1280;
     public double WindowHeight { get; set; } = 760;
+    public DesktopLyricsSettings DesktopLyrics { get; set; } = new();
+    public bool CloseToTray { get; set; } = true;
+    public bool SystemMediaControlsEnabled { get; set; } = true;
     public List<Guid> QueueTrackIds { get; set; } = [];
     public int QueueIndex { get; set; } = -1;
+    public List<SearchHistoryEntry> SearchHistory { get; set; } = [];
 }
 
 public enum ImportStage

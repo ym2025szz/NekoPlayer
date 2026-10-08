@@ -1,0 +1,124 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:NekoPlayer.App.ViewModels"
+             xmlns:core="using:NekoPlayer.Core.Models"
+             xmlns:controls="using:NekoPlayer.App.Controls"
+             xmlns:conv="using:NekoPlayer.App.Converters"
+             x:Class="NekoPlayer.App.Views.OnlineSearchView"
+             x:Name="SearchView" x:DataType="vm:OnlineSearchViewModel">
+  <UserControl.Resources>
+    <conv:TrackActionNameConverter x:Key="TrackActionNameConverter"/>
+    <conv:TrackDetailsConverter x:Key="TrackDetailsConverter"/>
+    <conv:NonEmptyTextConverter x:Key="NonEmptyTextConverter"/>
+  </UserControl.Resources>
+  <UserControl.Styles>
+    <Style Selector="ListBox.providerGroups ListBoxItem"><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,0,6,6"/></Style>
+    <Style Selector="ListBox.providerGroups ListBoxItem:selected /template/ ContentPresenter"><Setter Property="Background" Value="#28464B"/></Style>
+    <Style Selector="ListBox.searchResults ListBoxItem"><Setter Property="Padding" Value="2"/></Style>
+    <Style Selector="Button.searchAction"><Setter Property="Width" Value="36"/><Setter Property="Height" Value="36"/><Setter Property="Padding" Value="7"/></Style>
+  </UserControl.Styles>
+  <!-- The result ListBox receives a finite star-sized viewport and owns its scrolling. -->
+  <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="8">
+    <Border Background="#142126" CornerRadius="14" Padding="12">
+      <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
+        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+          <TextBox x:Name="OnlineQueryBox" Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}" Watermark="歌曲、歌手或专辑" AutomationProperties.Name="在线音乐关键词"/>
+          <Button Grid.Column="1" Classes="accent" Content="搜索" Command="{Binding SearchCommand}" AutomationProperties.Name="搜索在线音乐"/>
+          <Button Grid.Column="2" Content="历史" IsEnabled="{Binding HasHistory}" AutomationProperties.Name="查看搜索历史">
+            <Button.Flyout><Flyout Placement="BottomEdgeAlignedRight">
+              <Grid Width="310" RowDefinitions="Auto,*,Auto" RowSpacing="8">
+                <TextBlock Text="最近搜索" FontWeight="SemiBold"/>
+                <ListBox Grid.Row="1" MaxHeight="220" ItemsSource="{Binding History}">
+                  <ListBox.ItemTemplate><DataTemplate x:DataType="core:SearchHistoryEntry">
+                    <Grid ColumnDefinitions="*,34" ColumnSpacing="5">
+                      <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{ReflectionBinding #SearchView.DataContext.UseHistoryCommand}" CommandParameter="{Binding}" ToolTip.Tip="{Binding Query}">
+                        <TextBlock Text="{Binding Query}" TextTrimming="CharacterEllipsis"/>
+                      </Button>
+                      <Button Grid.Column="1" Width="34" Height="34" Padding="6" Content="×" ToolTip.Tip="{Binding Query, StringFormat='删除搜索历史：{0}'}" AutomationProperties.Name="{Binding Query, StringFormat='删除搜索历史：{0}'}" Command="{ReflectionBinding #SearchView.DataContext.RemoveHistoryCommand}" CommandParameter="{Binding}"/>
+                    </Grid>
+                  </DataTemplate></ListBox.ItemTemplate>
+                </ListBox>
+                <Button Grid.Row="2" Content="清空搜索历史" Command="{ReflectionBinding #SearchView.DataContext.ClearHistoryCommand}"/>
+              </Grid>
+            </Flyout></Button.Flyout>
+          </Button>
+        </Grid>
+        <WrapPanel Grid.Row="1">
+          <TextBlock Text="搜索范围" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,10,6"/>
+          <ComboBox x:Name="ProviderFilter" MinWidth="158" ItemsSource="{Binding ProviderOptions}" SelectedValue="{Binding SelectedProviderId, Mode=TwoWay}" SelectedValueBinding="{ReflectionBinding Id}" AutomationProperties.Name="在线音乐来源筛选" Margin="0,0,12,6">
+            <ComboBox.ItemTemplate><DataTemplate x:CompileBindings="False"><TextBlock Text="{Binding Name}"/></DataTemplate></ComboBox.ItemTemplate>
+          </ComboBox>
+          <TextBlock Text="各来源独立加载；播放时确认完整播放或试听权限。" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,6"/>
+        </WrapPanel>
+      </Grid>
+    </Border>
+
+    <ListBox Grid.Row="1" Classes="providerGroups" ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup, Mode=TwoWay}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled" AutomationProperties.Name="按来源查看搜索结果">
+      <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
+      <ListBox.ItemTemplate><DataTemplate x:DataType="vm:ProviderSearchGroupViewModel">
+        <Border Background="#14262B" CornerRadius="10" Padding="9,6" Width="108" ToolTip.Tip="{Binding StatusMessage}">
+          <StackPanel Spacing="2"><TextBlock Text="{Binding TabLabel}" FontWeight="SemiBold" FontSize="12" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding StatusMessage}" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/></StackPanel>
+        </Border>
+      </DataTemplate></ListBox.ItemTemplate>
+    </ListBox>
+
+    <Border Grid.Row="2" Background="{StaticResource CardBrush}" CornerRadius="10" Padding="10,7">
+      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <StackPanel Spacing="3">
+          <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+          <TextBlock Text="{Binding SelectedGroup.StatusMessage}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" ToolTip.Tip="{Binding SelectedGroup.StatusMessage}"/>
+          <TextBlock Text="{Binding SelectedGroup.ErrorMessage}" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap" MaxHeight="36" ClipToBounds="True" FontSize="11" ToolTip.Tip="{Binding SelectedGroup.ErrorMessage}" IsVisible="{Binding SelectedGroup.IsError}"/>
+          <TextBlock Text="{Binding SelectedGroup.ActionHint}" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" FontSize="11" IsVisible="{Binding SelectedGroup.ActionHint, Converter={StaticResource NonEmptyTextConverter}}"/>
+          <TextBlock Text="{Binding SelectedGroup.WarningMessage}" Foreground="{StaticResource WarningBrush}" TextWrapping="Wrap" MaxHeight="32" ClipToBounds="True" FontSize="11" ToolTip.Tip="{Binding SelectedGroup.WarningMessage}" IsVisible="{Binding SelectedGroup.WarningMessage, Converter={StaticResource NonEmptyTextConverter}}"/>
+          <TextBlock Text="{Binding FindOtherHint}" Foreground="{StaticResource AccentBrightBrush}" FontSize="11" TextWrapping="Wrap" IsVisible="{Binding FindOtherHint, Converter={StaticResource NonEmptyTextConverter}}"/>
+        </StackPanel>
+        <StackPanel Grid.Column="1" Spacing="6" VerticalAlignment="Top">
+          <Button Content="取消加载" Command="{Binding CancelGroupCommand}" CommandParameter="{Binding SelectedGroup}" IsVisible="{Binding SelectedGroup.IsLoading}"/>
+          <Button Content="{Binding SelectedGroup.RetryText}" Command="{Binding RetryGroupCommand}" CommandParameter="{Binding SelectedGroup}" IsVisible="{Binding SelectedGroup.CanRetry}"/>
+          <Button Content="前往登录" Command="{Binding GoLoginCommand}" CommandParameter="{Binding SelectedGroup}" IsVisible="{Binding SelectedGroup.CanGoLogin}" AutomationProperties.Name="前往当前来源的账号授权页"/>
+          <Button Content="查看其他来源" Command="{Binding FindOtherSourcesCommand}" CommandParameter="{Binding SelectedGroup}" IsVisible="{Binding SelectedGroup.CanFindOther}"/>
+        </StackPanel>
+        <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" IsIndeterminate="True" IsVisible="{Binding SelectedGroup.IsLoading}" Margin="0,5,0,0"/>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="3">
+      <ListBox x:Name="SearchResults" Classes="searchResults" ItemsSource="{Binding SelectedGroup.Tracks}" SelectedItem="{Binding SelectedTrack, Mode=TwoWay}" AutoScrollToSelectedItem="False" DoubleTapped="OnResultDoubleTapped" ScrollViewer.HorizontalScrollBarVisibility="Disabled" AutomationProperties.Name="当前来源的歌曲结果">
+        <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
+        <ListBox.ItemTemplate><DataTemplate x:DataType="core:Track">
+          <Border Padding="7" CornerRadius="10" Background="Transparent" ToolTip.Tip="{Binding ., Converter={StaticResource TrackDetailsConverter}}">
+            <Grid ColumnDefinitions="46,*,48,Auto" ColumnSpacing="8" MinHeight="66">
+              <controls:TrackCover Width="42" Height="42" CoverPath="{Binding CoverCachePath}" CoverUrl="{Binding CoverUrl}" DecodeWidth="84" CoverCornerRadius="11" VerticalAlignment="Center"/>
+              <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis"><Run Text="{Binding Artist}"/><Run Text=" · "/><Run Text="{Binding Album}"/></TextBlock>
+                <TextBlock Foreground="{StaticResource AccentBrightBrush}" FontSize="10" TextTrimming="CharacterEllipsis"><Run Text="{Binding ProviderName}"/><Run Text=" · "/><Run Text="{Binding VersionLabel}"/></TextBlock>
+                <TextBlock Text="{Binding AvailabilityText}" Foreground="{StaticResource WarningBrush}" FontSize="10" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding RestrictionReason}"/>
+              </StackPanel>
+              <TextBlock Grid.Column="2" Text="{Binding Duration, Converter={StaticResource DurationConverter}}" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+              <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                <Button Classes="searchAction icon" ToolTip.Tip="完整播放（待确认时将尝试解析）" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=完整播放}" IsEnabled="{Binding CanAttemptPlayback}" Command="{ReflectionBinding #SearchView.DataContext.PlayCommand}" CommandParameter="{Binding}"><PathIcon Data="M 5,3 L 17,10 L 5,17 Z"/></Button>
+                <Button Classes="searchAction" Content="试听" Padding="2" FontSize="10" IsVisible="{Binding CanPreview}" IsEnabled="{Binding CanPreview}" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=试听片段}" Command="{ReflectionBinding #SearchView.DataContext.PreviewCommand}" CommandParameter="{Binding}"/>
+                <controls:FavoriteButton Width="36" Height="36" AutomationContext="{Binding AutomationContext}" IsChecked="{Binding IsFavorite, Mode=OneWay}" Command="{ReflectionBinding #SearchView.DataContext.FavoriteCommand}" CommandParameter="{Binding}"/>
+                <Button Classes="searchAction" Content="⋯" FontSize="20" ToolTip.Tip="更多歌曲操作" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=更多操作}">
+                  <Button.Flyout><MenuFlyout>
+                    <MenuItem Header="加入播放队列" Command="{ReflectionBinding #SearchView.DataContext.QueueCommand}" CommandParameter="{Binding}" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=加入播放队列}"/>
+                    <MenuItem Header="添加到歌单" Command="{ReflectionBinding #SearchView.DataContext.PlaylistCommand}" CommandParameter="{Binding}" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=添加到歌单}"/>
+                    <Separator/>
+                    <MenuItem Header="找其他来源或版本" Command="{ReflectionBinding #SearchView.DataContext.FindOtherCommand}" CommandParameter="{Binding}" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=找其他来源或版本}"/>
+                  </MenuFlyout></Button.Flyout>
+                </Button>
+              </StackPanel>
+            </Grid>
+          </Border>
+        </DataTemplate></ListBox.ItemTemplate>
+      </ListBox>
+      <Border IsVisible="{Binding SelectedGroup.IsEmpty}" Background="{StaticResource CardBrush}" CornerRadius="14" Padding="24" VerticalAlignment="Top"><TextBlock Text="此来源没有匹配结果。可以换个关键词或查看其他来源。" TextWrapping="Wrap" HorizontalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"/></Border>
+    </Grid>
+
+    <Grid Grid.Row="4" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+      <TextBlock Text="收藏与歌单保留歌曲来源和版本；受限歌曲也可保存，试听使用独立按钮。" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" VerticalAlignment="Center"/>
+      <Button Grid.Column="1" Content="加载更多" Command="{Binding LoadMoreCommand}" CommandParameter="{Binding SelectedGroup}" IsVisible="{Binding SelectedGroup.HasMore}" IsEnabled="{Binding SelectedGroup.IsLoadingMore, Converter={StaticResource BooleanInverseConverter}}" AutomationProperties.Name="加载当前来源的下一页"/>
+    </Grid>
+  </Grid>
+</UserControl>

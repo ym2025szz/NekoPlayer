@@ -11,6 +11,7 @@ using NekoPlayer.Core.Interfaces;
 using NekoPlayer.Core.Models;
 using NekoPlayer.Core.Services;
 using Serilog;
+using NekoPlayer.App.Services;
 
 namespace NekoPlayer.App.ViewModels;
 
@@ -28,6 +29,22 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly ITrackStateStore _trackStateStore;
     private readonly IClock _clock;
     private readonly DispatcherTimer _greetingTimer;
+    private readonly PlaybackCoordinator _playback;
+    private readonly ITrackCatalog _catalog;
+    private readonly IGatewayRuntime _gateway;
+    private readonly CancellationTokenSource _lifetimeCts = new();
+    private readonly object _backgroundGate = new();
+    private readonly List<Task> _backgroundTasks = [];
+    private readonly HashSet<long> _recordedSessions = [];
+    private Task? _initializationTask;
+    private Task? _shutdownTask;
+    private bool _stopping;
+    private bool _settingsLoaded;
+    private bool _preferencesApplied;
+    private bool _queueRestored;
+    private bool _hasPlayed;
+    private bool _syncingSearch;
+    private readonly LatestSpectrumDispatcher _spectrumDispatcher;
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _scanCts;
     private CancellationTokenSource? _playCountCts;
@@ -37,7 +54,6 @@ public partial class MainWindowViewModel : ViewModelBase
     private AppSettings _settings = new();
     private IReadOnlyList<Track> _allTracks = [];
     private bool _initialized;
-    private bool _disposed;
     private int _seekRequestVersion;
     private Task? _activeImportTask;
     private bool _favoriteOperationInProgress;
@@ -50,27 +66,48 @@ public partial class MainWindowViewModel : ViewModelBase
         IMusicLibraryService library, IPlaylistService playlists, IAudioPlayerService audio,
         IPlaybackQueueService queue, ILyricsService lyrics, ISettingsService settingsService,
         IUserDataPaths paths, IFfmpegLocator ffmpeg, ISpectrumService spectrum,
-        ITrackStateStore trackStateStore, IClock clock)
+        ITrackStateStore trackStateStore, IClock clock, PlaybackCoordinator playback,
+        OnlineSearchViewModel onlineSearch, ITrackCatalog catalog, IGatewayRuntime gateway, ProviderAccountsViewModel accounts,
+        LyricsPresentationService lyricsPresentation, IDesktopLyricsService desktopLyrics, SleepTimerService sleepTimer,
+        WindowsMediaControlsService mediaControls)
     {
         _library = library; _playlists = playlists; _audio = audio; _queue = queue; _lyrics = lyrics;
         _settingsService = settingsService; _paths = paths; _ffmpeg = ffmpeg;
         _spectrum = spectrum;
         _trackStateStore = trackStateStore;
         _clock = clock;
+        _playback = playback;
+        OnlineSearch = onlineSearch;
+        _catalog = catalog;
+        _gateway = gateway;
+        Accounts = accounts;
+        Accounts.AccountChanged += OnProviderAccountChanged;
+        InitializeFeatures(lyricsPresentation, desktopLyrics, sleepTimer, mediaControls);
+        _spectrumDispatcher = new LatestSpectrumDispatcher(UpdateSpectrum);
         _greetingTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(1) };
         _greetingTimer.Tick += OnGreetingTimerTick;
         _trackStateStore.FavoriteChanged += OnFavoriteChanged;
-        _audio.StateChanged += (_, state) => Dispatcher.UIThread.Post(() => ApplyPlaybackState(state));
-        _audio.PositionChanged += (_, position) => Dispatcher.UIThread.Post(() => UpdatePosition(position));
-        _audio.PlaybackCompleted += (_, _) => _ = HandleCompletedAsync();
-        _audio.PlaybackFailed += (_, ex) => Dispatcher.UIThread.Post(() => StatusMessage = ex.Message);
-        _queue.QueueChanged += (_, _) => Dispatcher.UIThread.Post(RefreshQueue);
-        _queue.CurrentChanged += (_, track) => Dispatcher.UIThread.Post(() => { CurrentTrack = track; RefreshQueue(); });
-        spectrum.SpectrumUpdated += (_, bands) => Dispatcher.UIThread.Post(() => UpdateSpectrum(bands));
-        for (var i = 0; i < 40; i++) SpectrumBars.Add(3);
+        _playback.SnapshotChanged += OnPlaybackSnapshotChanged;
+        _playback.PlaybackStarted += OnPlaybackStarted;
+        _queue.QueueChanged += OnQueueChanged;
+        _queue.CurrentChanged += OnQueueCurrentChanged;
+        spectrum.SpectrumUpdated += OnSpectrumUpdated;
+        OnlineSearch.PlayRequested += OnOnlinePlayRequested;
+        OnlineSearch.FavoriteRequested += OnOnlineFavoriteRequested;
+        OnlineSearch.QueueRequested += OnOnlineQueueRequested;
+        OnlineSearch.PlaylistRequested += OnOnlinePlaylistRequested;
+        OnlineSearch.HistoryChanged += OnSearchHistoryChanged;
+        OnlineSearch.PropertyChanged += OnOnlineSearchPropertyChanged;
+        OnlineSearch.LoginRequested += OnSearchLoginRequested;
+        for (var i = 0; i < 40; i++) SpectrumBars.Add(new SpectrumBarViewModel());
     }
 
     public ObservableCollection<Track> Tracks { get; } = [];
+    public OnlineSearchViewModel OnlineSearch { get; }
+    public ProviderAccountsViewModel Accounts { get; }
+    public event EventHandler? AccountsRequested;
+    public GridLength NavigationIconWidth => IsCompactLayout ? GridLength.Star : new GridLength(30);
+    public GridLength NavigationLabelWidth => IsCompactLayout ? new GridLength(0) : GridLength.Star;
     public ObservableCollection<Track> Favorites { get; } = [];
     public ObservableCollection<RecentTrack> RecentTracks { get; } = [];
     public ObservableCollection<Playlist> Playlists { get; } = [];
@@ -80,13 +117,13 @@ public partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<TrackPickerItemViewModel> TrackPickerItems { get; } = [];
     public ObservableCollection<TrackPickerItemViewModel> VisibleTrackPickerItems { get; } = [];
     public ObservableCollection<PlaylistChoiceViewModel> PlaylistChoices { get; } = [];
-    public ObservableCollection<LyricsRowViewModel> LyricsRows { get; } = [];
-    public ObservableCollection<double> SpectrumBars { get; } = [];
+    public ObservableCollection<SpectrumBarViewModel> SpectrumBars { get; } = [];
     public IReadOnlyList<string> SortOptions { get; } = ["标题", "歌手", "专辑", "添加时间", "时长"];
     public IReadOnlyList<string> PlayModeOptions { get; } = ["顺序播放", "列表循环", "单曲循环", "随机播放"];
 
     [ObservableProperty] private string currentPage = "首页";
     [ObservableProperty] private string searchText = string.Empty;
+    [ObservableProperty] private string localSearchText = string.Empty;
     [ObservableProperty] private string sortField = "标题";
     [ObservableProperty] private string statusMessage = "准备就绪";
     [ObservableProperty] private string scanStatus = string.Empty;
@@ -141,9 +178,10 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private string localTimeText = string.Empty;
 
     public string CurrentTitle => CurrentTrack?.Title ?? "还没有播放歌曲";
-    public string CurrentArtist => CurrentTrack?.Artist ?? "从本地音乐里挑一首吧";
+    public string CurrentArtist => CurrentTrack?.Artist ?? "搜索在线歌曲，或从本地音乐里挑一首吧";
     public string CurrentAlbum => CurrentTrack?.Album ?? "猫耳雷达正在待机";
     public string CurrentCoverPath => CurrentTrack?.CoverCachePath ?? string.Empty;
+    public string CurrentCoverUrl => CurrentTrack?.CoverUrl ?? string.Empty;
     public string FfmpegStatus => _ffmpeg.StatusMessage;
     public string FfmpegVersion => _ffmpeg.Version;
     public string FfmpegPath => _ffmpeg.BinaryDirectory;
@@ -162,6 +200,8 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool IsFavoritesPage => CurrentPage == "我的收藏";
     public bool IsPlaylistsPage => CurrentPage == "我的歌单";
     public bool IsSettingsPage => CurrentPage == "设置";
+    public bool IsSearchPage => CurrentPage == "搜索";
+    public bool HasModalLayer => IsTrackPickerVisible || IsPlaylistPickerVisible || LibraryRemovalConfirmationVisible || RecentClearConfirmationVisible || DeleteConfirmationVisible;
     public bool IsWideLayout => LayoutMode == ResponsiveLayoutMode.Wide;
     public bool IsStandardLayout => LayoutMode == ResponsiveLayoutMode.Standard;
     public bool IsCompactLayout => LayoutMode == ResponsiveLayoutMode.Compact;
@@ -203,7 +243,8 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool IsRecentEmpty => RecentPageState == PageLoadState.Empty;
     public bool HasRecentContent => RecentPageState == PageLoadState.Content;
     public bool IsRecentError => RecentPageState == PageLoadState.Error;
-    public bool CanSeek => CurrentTrack is { FileExists: true } && _ffmpeg.IsAvailable && _audio.Duration > TimeSpan.Zero && PlaybackState is not PlaybackState.Loading;
+    public bool CanSeek => !_stopping && CurrentTrack is not null && _ffmpeg.IsAvailable &&
+        _playback.Snapshot.CanSeek && DurationSeconds > 0 && PlaybackState is not PlaybackState.Loading;
     public PlaybackPrimaryAction PrimaryPlaybackAction => PlaybackActionMapper.Resolve(PlaybackState, CurrentTrack is not null, _queue.Items.Count > 0);
     public bool ShowPauseIcon => PrimaryPlaybackAction == PlaybackPrimaryAction.Pause;
     public bool ShowPlayIcon => PrimaryPlaybackAction is PlaybackPrimaryAction.Play or PlaybackPrimaryAction.Retry or PlaybackPrimaryAction.Disabled;
@@ -228,7 +269,9 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool CanConfirmPlaylistPicker => SelectedPlaylistChoiceCount > 0 && _playlistPickerTrackIds.Length > 0 && !_playlistOperationInProgress;
     public bool IsLibraryRemovalInProgress => _libraryRemovalInProgress;
 
-    public async Task InitializeAsync()
+    public Task InitializeAsync() => _initializationTask ??= InitializeCoreAsync();
+
+    private async Task InitializeCoreAsync()
     {
         if (_initialized) return;
         _initialized = true;
@@ -236,37 +279,51 @@ public partial class MainWindowViewModel : ViewModelBase
         _greetingTimer.Start();
         try
         {
-            await _ffmpeg.ValidateAsync();
+            _settings = await _settingsService.LoadAsync(_lifetimeCts.Token);
+            _settingsLoaded = true;
+            OnlineSearch.LoadHistory(_settings.SearchHistory);
+            TrackBackgroundOperation(WarmGatewayAsync());
+            await _ffmpeg.ValidateAsync(_lifetimeCts.Token);
             OnPropertyChanged(nameof(FfmpegStatus));
             OnPropertyChanged(nameof(FfmpegVersion));
             OnPropertyChanged(nameof(FfmpegPath));
             OnPropertyChanged(nameof(FfmpegSharedStatus));
-            await _library.InitializeAsync();
-            _settings = await _settingsService.LoadAsync();
+            await _library.InitializeAsync(_lifetimeCts.Token);
             VolumePercent = _settings.Volume * 100;
             IsMuted = _settings.IsMuted;
             IncludeSubdirectories = _settings.IncludeSubdirectories;
             SpectrumEnabled = _settings.SpectrumEnabled;
             SpectrumFps = Math.Clamp(_settings.SpectrumFps, 10, 60);
             ReduceMotion = _settings.ReduceMotion;
+            ApplyFeaturePreferences();
             _audio.Volume = _settings.Volume;
             _audio.IsMuted = _settings.IsMuted;
             _queue.PlayMode = _settings.PlayMode;
             _spectrum.FramesPerSecond = SpectrumFps;
-            _spectrum.IsEnabled = SpectrumEnabled && IsNowPlayingPage;
+            _spectrum.IsEnabled = ShowSpectrum;
+            _preferencesApplied = true;
             UpdatePlayModeText();
             await RefreshAllAsync();
-            var requested = _settings.QueueTrackIds.Select(id => _allTracks.FirstOrDefault(x => x.Id == id)).Where(x => x is not null).Cast<Track>().ToArray();
-            var restored = requested.Where(x => File.Exists(x.FilePath)).ToArray();
-            _queue.Restore(restored, _settings.QueueIndex);
-            if (_queue.Current is { } last && File.Exists(last.FilePath) && _ffmpeg.IsAvailable)
+            var savedTracks = await _catalog.GetTracksByIdsAsync(_settings.QueueTrackIds, _lifetimeCts.Token);
+            var byId = savedTracks.ToDictionary(x => x.Id);
+            var restored = _settings.QueueTrackIds.Where(byId.ContainsKey).Select(id => byId[id])
+                .Where(x => x.IsOnline || x.FileExists).DistinctBy(x => x.Id).ToArray();
+            var currentIndex = _settings.LastTrackId is { } currentId ? Array.FindIndex(restored, x => x.Id == currentId) : -1;
+            if (currentIndex < 0) { currentIndex = restored.Length > 0 ? 0 : -1; _settings.LastPosition = TimeSpan.Zero; }
+            _queue.Restore(restored, currentIndex);
+            _queueRestored = true;
+            if (_queue.Current is { } last)
             {
-                await _audio.LoadAsync(last.FilePath, _settings.LastPosition);
                 CurrentTrack = last;
-                await LoadLyricsAsync(last);
+                DurationSeconds = Math.Max(0, last.Duration.TotalSeconds);
+                DurationText = TimeFormatter.Format(last.Duration);
+                PositionSeconds = SeekSeconds = Math.Clamp(_settings.LastPosition.TotalSeconds, 0, DurationSeconds);
+                CurrentTimeText = TimeFormatter.Format(TimeSpan.FromSeconds(PositionSeconds));
+                ApplyPlaybackState(PlaybackState.Stopped);
             }
-            StatusMessage = requested.Length != restored.Length ? $"已跳过 {requested.Length - restored.Length} 首文件不存在的队列歌曲" : _ffmpeg.IsAvailable ? "音乐舱已就绪" : "界面和音乐库可用；播放前请放置 FFmpeg";
+            StatusMessage = _settings.QueueTrackIds.Count != restored.Length ? $"已跳过 {_settings.QueueTrackIds.Count - restored.Length} 首不存在的队列歌曲" : _ffmpeg.IsAvailable ? "音乐舱已就绪；在线搜索位于搜索页" : "界面和音乐库可用；播放前请放置 FFmpeg";
         }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested) { }
         catch (Exception ex)
         {
             Log.Error(ex, "应用初始化失败");
@@ -344,102 +401,154 @@ public partial class MainWindowViewModel : ViewModelBase
         else if (IsQueueVisible) IsQueueVisible = false;
     }
 
-    public async Task SaveStateAsync(double width, double height)
+    public Task SaveStateAsync(double width, double height) => _shutdownTask ??= ShutdownCoreAsync(width, height);
+
+    private async Task ShutdownCoreAsync(double width, double height)
     {
-        _settings.Volume = (float)(VolumePercent / 100d);
-        _settings.IsMuted = IsMuted;
-        _settings.PlayMode = _queue.PlayMode;
-        _settings.LastTrackId = CurrentTrack?.Id;
-        _settings.LastPosition = _audio.Position;
-        _settings.QueueTrackIds = _queue.Items.Select(x => x.Id).ToList();
-        _settings.QueueIndex = _queue.CurrentIndex;
-        _settings.IncludeSubdirectories = IncludeSubdirectories;
-        _settings.SpectrumEnabled = SpectrumEnabled;
-        _settings.SpectrumFps = SpectrumFps;
-        _settings.ReduceMotion = ReduceMotion;
-        _settings.WindowWidth = width;
-        _settings.WindowHeight = height;
+        _stopping = true;
+        if (_settingsLoaded)
+        {
+            if (_preferencesApplied)
+            {
+                _settings.Volume = (float)(VolumePercent / 100d);
+                _settings.IsMuted = IsMuted;
+                _settings.PlayMode = _queue.PlayMode;
+                _settings.IncludeSubdirectories = IncludeSubdirectories;
+                _settings.SpectrumEnabled = SpectrumEnabled;
+                _settings.SpectrumFps = SpectrumFps;
+                _settings.ReduceMotion = ReduceMotion;
+                ExportFeaturePreferences();
+            }
+            _settings.WindowWidth = width;
+            _settings.WindowHeight = height;
+            _settings.SearchHistory = OnlineSearch.ExportHistory().ToList();
+            if (_queueRestored)
+            {
+                _settings.LastTrackId = CurrentTrack?.Id ?? _queue.Current?.Id;
+                if (_hasPlayed) _settings.LastPosition = _playback.Snapshot.Position;
+                _settings.QueueTrackIds = _queue.Items.Select(x => x.Id).ToList();
+                _settings.QueueIndex = _queue.CurrentIndex;
+            }
+        }
+        _lifetimeCts.Cancel();
         _seekCoordinator.Cancel(); _playCountCts?.Cancel(); _searchCts?.Cancel(); _scanCts?.Cancel(); _snackbarCts?.Cancel();
         _greetingTimer.Stop();
         _greetingTimer.Tick -= OnGreetingTimerTick;
-        if (_activeImportTask is { IsCompleted: false })
+        try
         {
-            try { await _activeImportTask.WaitAsync(TimeSpan.FromSeconds(5)); }
-            catch (TimeoutException) { Log.Warning("等待导入任务退出超过 5 秒，应用继续关闭"); }
-            catch (OperationCanceledException) { }
+            Task[] pending;
+            lock (_backgroundGate) pending = _backgroundTasks.Where(x => !x.IsCompleted).ToArray();
+            var all = pending.Concat(new[] { _initializationTask, _activeImportTask }.OfType<Task>()).Distinct().ToArray();
+            if (all.Length > 0)
+            {
+                try { await Task.WhenAll(all).WaitAsync(TimeSpan.FromSeconds(5)); }
+                catch (Exception ex) { Log.Warning(ex, "等待受管任务结束时遇到问题，继续回收资源"); }
+            }
+            if (_settingsLoaded) await _settingsService.SaveAsync(_settings);
         }
-        await _settingsService.SaveAsync(_settings);
-        if (!_disposed)
+        catch (Exception ex) { Log.Warning(ex, "退出时保存配置失败，原配置保留"); }
+        finally
         {
-            _disposed = true;
             _trackStateStore.FavoriteChanged -= OnFavoriteChanged;
+            _playback.SnapshotChanged -= OnPlaybackSnapshotChanged;
+            _playback.PlaybackStarted -= OnPlaybackStarted;
+            _queue.QueueChanged -= OnQueueChanged;
+            _queue.CurrentChanged -= OnQueueCurrentChanged;
+            _spectrum.SpectrumUpdated -= OnSpectrumUpdated;
+            _spectrumDispatcher.Dispose();
+            OnlineSearch.PlayRequested -= OnOnlinePlayRequested;
+            OnlineSearch.FavoriteRequested -= OnOnlineFavoriteRequested;
+            OnlineSearch.QueueRequested -= OnOnlineQueueRequested;
+            OnlineSearch.PlaylistRequested -= OnOnlinePlaylistRequested;
+            OnlineSearch.HistoryChanged -= OnSearchHistoryChanged;
+            OnlineSearch.PropertyChanged -= OnOnlineSearchPropertyChanged;
+            OnlineSearch.LoginRequested -= OnSearchLoginRequested;
             _seekCoordinator.Dispose();
             _snackbarCts?.Dispose();
+            if ((object)OnlineSearch is IDisposable disposableSearch) disposableSearch.Dispose();
+            Accounts.AccountChanged -= OnProviderAccountChanged;
+            Accounts.Dispose();
+            await DisposeFeaturesAsync();
+            try { await _playback.DisposeAsync(); } catch (Exception ex) { Log.Warning(ex, "释放播放协调器失败"); }
+            try { await _audio.DisposeAsync(); } catch (Exception ex) { Log.Warning(ex, "释放音频失败"); }
+            try { await _gateway.DisposeAsync(); } catch (Exception ex) { Log.Warning(ex, "释放在线接口失败"); }
         }
-        await _audio.DisposeAsync();
     }
 
     [RelayCommand] private void Navigate(string page)
     {
+        if (_stopping || HasModalLayer) return;
         CurrentPage = page;
         if (page == "我的收藏" || page == "最近播放" || page == "我的歌单") _ = RefreshSecondaryPageAsync(page);
     }
+    [RelayCommand] private void NavigateSearch() => Navigate("搜索");
+    [RelayCommand] private void OpenAccounts()
+    {
+        if (_stopping || HasModalLayer) return;
+        Navigate("设置");
+        TrackBackgroundOperation(Accounts.RefreshAsync());
+        AccountsRequested?.Invoke(this, EventArgs.Empty);
+    }
+    [RelayCommand] private void BackToSearch() => Navigate(_nowPlayingReturnPage);
 
     [RelayCommand] private async Task RefreshAsync() => await RefreshLibraryAsync();
     [RelayCommand] private async Task RetryLibraryLoadAsync() => await RefreshLibraryAsync();
 
     [RelayCommand] private async Task PlayTrackAsync(Track? track)
     {
-        if (track is null) return;
+        await PlayFromContextAsync(track, GetPlaybackContext(track), false);
+    }
+
+    [RelayCommand] private async Task PreviewTrackAsync(Track? track) => await PlayFromContextAsync(track, GetPlaybackContext(track), true);
+
+    private IReadOnlyList<Track> GetPlaybackContext(Track? track)
+    {
+        if (IsSearchPage && track is not null)
+            return OnlineSearch.Groups.FirstOrDefault(x => x.Tracks.Any(t => t.Id == track.Id))?.Tracks.ToArray() ?? [track];
+        if (IsFavoritesPage) return Favorites.ToArray();
+        if (IsRecentPage) return RecentTracks.Select(x => x.Track).ToArray();
+        if (IsPlaylistsPage) return PlaylistTracks.ToArray();
+        if (IsNowPlayingPage || IsQueueVisible) return _queue.Items.ToArray();
+        return Tracks.ToArray();
+    }
+
+    private async Task PlayFromContextAsync(Track? track, IReadOnlyList<Track>? context, bool preview, TimeSpan? startPosition = null)
+    {
+        if (track is null || _stopping) return;
         try
         {
             if (!_ffmpeg.IsAvailable) { StatusMessage = "缺少 FFmpeg，暂时无法播放；设置页可查看放置路径"; return; }
-            track.RefreshFileAvailability();
-            if (!track.FileExists)
-            {
-                StatusMessage = "文件不存在，未启动播放";
-                ShowSnackbar("文件不存在，歌曲记录仍保留在音乐库中", SnackbarTone.Warning);
-                return;
-            }
-            if (!_queue.Items.Any(x => x.Id == track.Id)) _queue.Replace(Tracks.Count > 0 ? Tracks : [track], track.Id);
-            else _queue.SetCurrent(track.Id);
-            CurrentTrack = track;
-            OnPropertyChanged(nameof(CurrentTitle)); OnPropertyChanged(nameof(CurrentArtist)); OnPropertyChanged(nameof(CurrentAlbum)); OnPropertyChanged(nameof(CurrentCoverPath));
-            await _audio.LoadAsync(track.FilePath);
-            await LoadLyricsAsync(track);
-            await _audio.PlayAsync();
-            await _library.RecordPlaybackAsync(track.Id, TimeSpan.Zero);
-            SchedulePlayCount(track.Id);
-            StatusMessage = $"正在播放：{track.Title}";
+            CancelSeek();
+            var result = await _playback.PlayAsync(track, context, preview, startPosition, _lifetimeCts.Token);
+            if (result.Track is not null) OnlineSearch.ApplyAvailability(result.Track);
+            if (!result.Started && !string.IsNullOrWhiteSpace(result.Message))
+                ShowSnackbar(result.Message, SnackbarTone.Warning);
         }
+        catch (OperationCanceledException) { }
         catch (Exception ex) { Log.Error(ex, "播放歌曲失败"); StatusMessage = ex.Message; ShowSnackbar(ex.Message, SnackbarTone.Error); }
     }
 
     [RelayCommand] private async Task TogglePlayAsync()
     {
-        if (!CanTogglePlay) return;
-        if (_audio.State == PlaybackState.Playing) { await _audio.PauseAsync(); return; }
-        var candidate = CurrentTrack ?? SelectedTrack ?? _queue.Current ?? Tracks.FirstOrDefault();
-        if (candidate is null) return;
-        candidate.RefreshFileAvailability();
-        if (!candidate.FileExists)
+        if (!CanTogglePlay || _stopping) return;
+        if (_playback.Snapshot.Track is null)
         {
-            StatusMessage = "文件不存在，无法播放";
-            ShowSnackbar("文件不存在，无法播放", SnackbarTone.Warning);
-            return;
+            var candidate = CurrentTrack ?? _queue.Current ?? SelectedTrack ?? Tracks.FirstOrDefault();
+            await PlayFromContextAsync(candidate, _queue.Items.Count > 0 ? _queue.Items.ToArray() : GetPlaybackContext(candidate), false,
+                !_hasPlayed && candidate?.Id == _settings.LastTrackId ? _settings.LastPosition : null);
         }
-        if (CurrentTrack is null || _audio.State == PlaybackState.Error) await PlayTrackAsync(candidate);
-        else await _audio.PlayAsync();
+        else await RunPlaybackActionAsync(() => _playback.ToggleAsync());
     }
 
     [RelayCommand] private async Task StopAsync()
     {
         _playCountCts?.Cancel();
-        await _audio.StopAsync();
+        CancelSeek();
+        await RunPlaybackActionAsync(() => _playback.StopAsync());
         UpdatePosition(TimeSpan.Zero);
     }
-    [RelayCommand] private async Task PreviousAsync() { var track = _queue.MovePrevious(_audio.Position); if (track is not null) await PlayTrackAsync(track); }
-    [RelayCommand] private async Task NextAsync() { var track = _queue.MoveNext(); if (track is not null) await PlayTrackAsync(track); }
+    [RelayCommand] private async Task PreviousAsync() { CancelSeek(); await RunPlaybackActionAsync(() => _playback.PreviousAsync()); }
+    [RelayCommand] private async Task NextAsync() { CancelSeek(); await RunPlaybackActionAsync(() => _playback.NextAsync()); }
     [RelayCommand] private void ToggleQueue() => IsQueueVisible = !IsQueueVisible;
     [RelayCommand] private void CancelScan() => _scanCts?.Cancel();
     [RelayCommand] private void DismissImport()
@@ -466,6 +575,11 @@ public partial class MainWindowViewModel : ViewModelBase
         ApplyFavoriteState(track.Id, !previous);
         try
         {
+            if (track.IsOnline)
+            {
+                var canonical = await _catalog.EnsureOnlineTrackAsync(track, _lifetimeCts.Token);
+                track.Id = canonical.Id;
+            }
             await _library.SetFavoriteAsync(track.Id, !previous);
             var id = track.Id;
             ShowSnackbar(
@@ -541,21 +655,14 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    [RelayCommand] private void AddToQueue(Track? track) { if (track is not null) _queue.Add(track); }
-    [RelayCommand] private void PlayNext(Track? track) { if (track is not null) _queue.PlayNext(track); }
+    [RelayCommand] private async Task AddToQueueAsync(Track? track) { if (track is not null) await RunPlaybackActionAsync(() => _playback.AddToQueueAsync(track)); }
+    [RelayCommand] private async Task PlayNextAsync(Track? track) { if (track is not null) await RunPlaybackActionAsync(() => _playback.PlayNextAsync(track)); }
     [RelayCommand] private async Task PlayQueueItemAsync(QueueItemViewModel? item)
     {
         if (item is null) return;
-        item.Track.RefreshFileAvailability();
-        if (!item.Track.FileExists)
-        {
-            ShowSnackbar("歌曲文件不存在", SnackbarTone.Warning);
-            return;
-        }
-        _queue.SetCurrent(item.Track.Id);
-        await PlayTrackAsync(item.Track);
+        await PlayFromContextAsync(item.Track, _queue.Items.ToArray(), false);
     }
-    [RelayCommand] private void RemoveQueueItem(QueueItemViewModel? item) { if (item is not null) _queue.Remove(item.Track.Id); }
+    [RelayCommand] private async Task RemoveQueueItemAsync(QueueItemViewModel? item) { if (item is not null) await RunPlaybackActionAsync(() => _playback.RemoveQueueItemAsync(item.Track.Id)); }
     [RelayCommand] private void AskRemoveFromLibrary(Track? track)
     {
         if (track is null) return;
@@ -579,14 +686,7 @@ public partial class MainWindowViewModel : ViewModelBase
         try
         {
             var removedCurrentTrack = CurrentTrack is not null && ids.Contains(CurrentTrack.Id);
-            if (removedCurrentTrack)
-            {
-                _playCountCts?.Cancel();
-                await _audio.UnloadAsync();
-                CurrentTrack = null;
-                UpdatePosition(TimeSpan.Zero);
-            }
-            foreach (var id in ids) _queue.Remove(id);
+            foreach (var id in ids) await _playback.RemoveQueueItemAsync(id);
             if (removedCurrentTrack) _queue.ClearCurrent();
             var result = await _library.RemoveFromLibraryAsync(ids);
             SelectedTrack = null;
@@ -608,8 +708,14 @@ public partial class MainWindowViewModel : ViewModelBase
             NotifyLibrarySelectionChanged();
         }
     }
-    [RelayCommand] private void OpenContainingFolder(Track? track) { var folder = track is null ? null : Path.GetDirectoryName(track.FilePath); if (folder is not null) OpenFolder(folder); }
-    [RelayCommand] private void ShowTrackInfo(Track? track) { if (track is not null) StatusMessage = $"{track.Title} · {track.Artist} · {track.CodecName} · {track.SampleRate} Hz · {track.Channels} 声道"; }
+    [RelayCommand] private void OpenContainingFolder(Track? track) { var folder = track is null || track.IsOnline ? null : Path.GetDirectoryName(track.FilePath); if (folder is not null) OpenFolder(folder); }
+    [RelayCommand] private void ShowTrackInfo(Track? track) { if (track is not null) StatusMessage = $"{track.Title} · {track.Artist} · {track.Album} · {TimeFormatter.Format(track.Duration)} · {track.ProviderName} · {track.AvailabilityText}"; }
+    [RelayCommand] private void FindOtherVersion(Track? track)
+    {
+        if (track is null || _stopping) return;
+        NavigateSearch();
+        OnlineSearch.FindOtherCommand.Execute(track);
+    }
 
     [RelayCommand] private async Task CreatePlaylistAsync() { await _playlists.CreateAsync(PlaylistName); PlaylistName = "新建歌单"; await RefreshPlaylistsAsync(); }
     [RelayCommand] private async Task RenamePlaylistAsync() { if (SelectedPlaylist is null) return; await _playlists.RenameAsync(SelectedPlaylist.Id, PlaylistName); await RefreshPlaylistsAsync(); }
@@ -676,8 +782,14 @@ public partial class MainWindowViewModel : ViewModelBase
     }
     [RelayCommand] private async Task OpenPlaylistPickerAsync(Track? track)
     {
-        if (track is null) return;
-        await OpenPlaylistPickerCoreAsync([track.Id]);
+        if (track is null || _stopping) return;
+        try
+        {
+            if (track.IsOnline) { var canonical = await _catalog.EnsureOnlineTrackAsync(track, _lifetimeCts.Token); track.Id = canonical.Id; }
+            await OpenPlaylistPickerCoreAsync([track.Id]);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Log.Warning(ex, "准备添加到歌单失败"); ShowSnackbar("歌曲记录保存失败，请重试", SnackbarTone.Error); }
     }
     [RelayCommand] private async Task OpenPlaylistPickerForSelectionAsync()
     {
@@ -729,7 +841,26 @@ public partial class MainWindowViewModel : ViewModelBase
             NotifyPlaylistChoiceSelectionChanged();
         }
     }
-    [RelayCommand] private async Task RemoveSelectedFromPlaylistAsync(Track? track) { if (SelectedPlaylist is null || track is null) return; await _playlists.RemoveTrackAsync(SelectedPlaylist.Id, track.Id); await LoadPlaylistTracksAsync(); }
+    [RelayCommand] private async Task RemoveSelectedFromPlaylistAsync(Track? track)
+    {
+        if (!CanEditPlaylist || SelectedPlaylist is not { } playlist || track is null) return;
+        var originalIndex = PlaylistTracks.ToList().FindIndex(x => x.Id == track.Id);
+        _playlistOperationInProgress = true; NotifyFeatureState();
+        try
+        {
+            await _playlists.RemoveTrackAsync(playlist.Id, track.Id, _lifetimeCts.Token);
+            if (SelectedPlaylist?.Id == playlist.Id) await LoadPlaylistTracksAsync();
+            ShowSnackbar("已从歌单移除，可撤销", SnackbarTone.Success, async token =>
+            {
+                await _playlists.AddTrackAsync(playlist.Id, track.Id, token);
+                await _playlists.MoveTrackAsync(playlist.Id, track.Id, originalIndex, token);
+                if (SelectedPlaylist?.Id == playlist.Id) await LoadPlaylistTracksAsync();
+            }, track.Id);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { if (!_stopping) ShowSnackbar("移除失败：" + ex.Message, SnackbarTone.Error); }
+        finally { _playlistOperationInProgress = false; NotifyFeatureState(); }
+    }
 
     [RelayCommand] private void SelectAllFilteredTracks() => UpdateLibrarySelection(Tracks);
     [RelayCommand] private void ClearLibrarySelection() => UpdateLibrarySelection([]);
@@ -739,23 +870,45 @@ public partial class MainWindowViewModel : ViewModelBase
 
     partial void OnCurrentPageChanged(string value)
     {
-        _spectrum.IsEnabled = SpectrumEnabled && value == "正在播放";
-        foreach (var name in new[] { nameof(IsHomePage), nameof(IsLibraryPage), nameof(IsNowPlayingPage), nameof(IsRecentPage), nameof(IsFavoritesPage), nameof(IsPlaylistsPage), nameof(IsSettingsPage) }) OnPropertyChanged(name);
+        if (value == "设置") TrackBackgroundOperation(Accounts.RefreshAsync());
+        else Accounts.CloseLogin();
+        _spectrum.IsEnabled = ShowSpectrum;
+        OnPropertyChanged(nameof(ShowSpectrum));
+        foreach (var name in new[] { nameof(IsHomePage), nameof(IsLibraryPage), nameof(IsNowPlayingPage), nameof(IsRecentPage), nameof(IsFavoritesPage), nameof(IsPlaylistsPage), nameof(IsSettingsPage), nameof(IsSearchPage) }) OnPropertyChanged(name);
     }
     partial void OnCurrentTrackChanged(Track? value)
     {
         value?.RefreshFileAvailability();
-        OnPropertyChanged(nameof(CurrentTitle)); OnPropertyChanged(nameof(CurrentArtist)); OnPropertyChanged(nameof(CurrentAlbum)); OnPropertyChanged(nameof(CurrentCoverPath));
+        OnPropertyChanged(nameof(CurrentTitle)); OnPropertyChanged(nameof(CurrentArtist)); OnPropertyChanged(nameof(CurrentAlbum)); OnPropertyChanged(nameof(CurrentCoverPath)); OnPropertyChanged(nameof(CurrentCoverUrl));
         NotifyPlaybackActionChanged();
         NotifyFavoriteCommandState();
+        NotifyFeatureState();
     }
-    partial void OnSelectedPlaylistChanged(Playlist? value) { if (value is not null) { PlaylistName = value.Name; _ = LoadPlaylistTracksAsync(); } }
-    partial void OnSearchTextChanged(string value) => DebounceSearch();
+    partial void OnSelectedPlaylistChanged(Playlist? value)
+    {
+        OnPropertyChanged(nameof(HasSelectedPlaylist));
+        NotifyFeatureState();
+        if (value is not null) { PlaylistName = value.Name; TrackBackgroundOperation(LoadPlaylistTracksAsync()); }
+        else { Replace(PlaylistTracks, []); ApplyPlaylistFilter(); }
+    }
+    partial void OnSearchTextChanged(string value)
+    {
+        if (_syncingSearch || _stopping) return;
+        OnlineSearch.Query = value;
+        if (!string.IsNullOrWhiteSpace(value) && !HasModalLayer) CurrentPage = "搜索";
+    }
+    partial void OnLocalSearchTextChanged(string value) => DebounceSearch();
+    partial void OnIsTrackPickerVisibleChanged(bool value) => OnPropertyChanged(nameof(HasModalLayer));
+    partial void OnIsPlaylistPickerVisibleChanged(bool value) => OnPropertyChanged(nameof(HasModalLayer));
+    partial void OnLibraryRemovalConfirmationVisibleChanged(bool value) => OnPropertyChanged(nameof(HasModalLayer));
+    partial void OnRecentClearConfirmationVisibleChanged(bool value) => OnPropertyChanged(nameof(HasModalLayer));
+    partial void OnDeleteConfirmationVisibleChanged(bool value) => OnPropertyChanged(nameof(HasModalLayer));
     partial void OnPlaylistTrackSearchTextChanged(string value) => ApplyTrackPickerFilter();
     partial void OnSortFieldChanged(string value) => ApplyFilter();
     partial void OnVolumePercentChanged(double value) { _audio.Volume = (float)Math.Clamp(value / 100d, 0, 1); }
     partial void OnIsMutedChanged(bool value) { _audio.IsMuted = value; }
-    partial void OnSpectrumEnabledChanged(bool value) { _spectrum.IsEnabled = value && IsNowPlayingPage; }
+    partial void OnSpectrumEnabledChanged(bool value) { _spectrum.IsEnabled = ShowSpectrum; OnPropertyChanged(nameof(ShowSpectrum)); }
+    partial void OnReduceMotionChanged(bool value) { _spectrum.IsEnabled = ShowSpectrum; OnPropertyChanged(nameof(ShowSpectrum)); }
     partial void OnSpectrumFpsChanged(int value) { _spectrum.FramesPerSecond = Math.Clamp(value, 10, 60); }
     partial void OnPlayModeTextChanged(string value)
     {
@@ -770,7 +923,7 @@ public partial class MainWindowViewModel : ViewModelBase
             nameof(ShowNavigationText), nameof(PageMargin), nameof(ShellContentMargin), nameof(PageContentMargin), nameof(HeaderSearchWidth), nameof(ShowDecorativeArtwork),
             nameof(ShowAlbumColumn), nameof(ShowExtendedTrackActions), nameof(ShowVolumeControls),
             nameof(AlbumColumnWidth), nameof(ArtistColumnWidth), nameof(TrackActionColumnWidth), nameof(QueueDrawerWidth),
-            nameof(IconSize), nameof(IconButtonSize), nameof(PrimaryPlayButtonSize)
+            nameof(IconSize), nameof(IconButtonSize), nameof(PrimaryPlayButtonSize), nameof(NavigationIconWidth), nameof(NavigationLabelWidth)
         }) OnPropertyChanged(name);
     }
 
@@ -913,11 +1066,26 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     private async Task RefreshPlaylistsAsync() => Replace(Playlists, await _playlists.GetPlaylistsAsync());
-    private async Task LoadPlaylistTracksAsync() { if (SelectedPlaylist is null) return; Replace(PlaylistTracks, await _playlists.GetTracksAsync(SelectedPlaylist.Id)); }
+    private async Task LoadPlaylistTracksAsync()
+    {
+        var playlistId = SelectedPlaylist?.Id;
+        if (playlistId is null) return;
+        var generation = ++_playlistLoadGeneration;
+        _playlistIsLoading = true; NotifyFeatureState();
+        try
+        {
+            var tracks = await _playlists.GetTracksAsync(playlistId.Value, _lifetimeCts.Token);
+            if (_stopping || generation != _playlistLoadGeneration || SelectedPlaylist?.Id != playlistId) return;
+            Replace(PlaylistTracks, tracks); ApplyPlaylistFilter();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { if (!_stopping && SelectedPlaylist?.Id == playlistId) ShowSnackbar("歌单加载失败：" + ex.Message, SnackbarTone.Error); }
+        finally { if (generation == _playlistLoadGeneration) { _playlistIsLoading = false; NotifyFeatureState(); } }
+    }
 
     private void ApplyFilter()
     {
-        IEnumerable<Track> query = _allTracks.Where(x => TrackSearch.Matches(x, SearchText));
+        IEnumerable<Track> query = _allTracks.Where(x => TrackSearch.Matches(x, LocalSearchText));
         query = SortField switch
         {
             "歌手" => query.OrderBy(x => x.Artist), "专辑" => query.OrderBy(x => x.Album),
@@ -973,7 +1141,7 @@ public partial class MainWindowViewModel : ViewModelBase
             var refreshed = await RefreshLibraryAsync();
             var affected = result.AffectedTrackIds.ToHashSet();
             var confirmedInDatabaseView = refreshed && affected.All(id => _allTracks.Any(x => x.Id == id));
-            var searchActive = !string.IsNullOrWhiteSpace(SearchText);
+            var searchActive = !string.IsNullOrWhiteSpace(LocalSearchText);
             var hiddenBySearch = confirmedInDatabaseView && searchActive && affected.Any(id => Tracks.All(x => x.Id != id));
             var visibleConfirmed = confirmedInDatabaseView && (searchActive || affected.All(id => Tracks.Any(x => x.Id == id)));
             var summary = ImportSummary.Create(result, visibleConfirmed, hiddenBySearch);
@@ -1037,11 +1205,17 @@ public partial class MainWindowViewModel : ViewModelBase
         IsSeekPending = true;
         try
         {
-            await _seekCoordinator.SubmitAsync(target, (value, token) => _audio.SeekAsync(value, token), delay);
+            var session = _playback.CurrentSessionId;
+            await _seekCoordinator.SubmitAsync(target, async (value, token) =>
+            {
+                if (session != _playback.CurrentSessionId) throw new OperationCanceledException(token);
+                await _playback.SeekAsync(value, token);
+            }, delay);
             if (version != _seekRequestVersion) return;
             PositionSeconds = target.TotalSeconds;
             SeekSeconds = target.TotalSeconds;
             CurrentTimeText = TimeFormatter.Format(target);
+            LyricsPresentation.RequestImmediateFollow();
         }
         catch (OperationCanceledException) when (version != _seekRequestVersion) { }
         catch (Exception ex)
@@ -1066,12 +1240,13 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void OnFavoriteChanged(object? sender, FavoriteStateChanged change)
     {
-        Dispatcher.UIThread.Post(() => ApplyFavoriteState(change.TrackId, change.IsFavorite));
+        Dispatcher.UIThread.Post(() => { if (!_stopping) ApplyFavoriteState(change.TrackId, change.IsFavorite); });
     }
 
     private void ApplyFavoriteState(Guid trackId, bool favorite)
     {
         foreach (var track in EnumerateTrackInstances(trackId)) track.IsFavorite = favorite;
+        OnlineSearch.ApplyFavoriteState(trackId, favorite);
 
         var existing = Favorites.FirstOrDefault(x => x.Id == trackId);
         if (!favorite && existing is not null) Favorites.Remove(existing);
@@ -1081,6 +1256,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 ?? RecentTracks.Select(x => x.Track).FirstOrDefault(x => x.Id == trackId)
                 ?? PlaylistTracks.FirstOrDefault(x => x.Id == trackId)
                 ?? QueueTracks.Select(x => x.Track).FirstOrDefault(x => x.Id == trackId)
+                ?? OnlineSearch.Groups.SelectMany(x => x.Tracks).FirstOrDefault(x => x.Id == trackId)
                 ?? (CurrentTrack?.Id == trackId ? CurrentTrack : null);
             if (source is not null) Favorites.Add(source);
         }
@@ -1098,6 +1274,7 @@ public partial class MainWindowViewModel : ViewModelBase
         foreach (var track in RecentTracks.Select(x => x.Track).Where(x => x.Id == trackId)) yield return track;
         foreach (var track in PlaylistTracks.Where(x => x.Id == trackId)) yield return track;
         foreach (var track in QueueTracks.Select(x => x.Track).Where(x => x.Id == trackId)) yield return track;
+        foreach (var track in OnlineSearch.Groups.SelectMany(x => x.Tracks).Where(x => x.Id == trackId)) yield return track;
         if (CurrentTrack?.Id == trackId) yield return CurrentTrack;
     }
 
@@ -1156,12 +1333,6 @@ public partial class MainWindowViewModel : ViewModelBase
         }, cancellationToken);
     }
 
-    private async Task LoadLyricsAsync(Track track)
-    {
-        var rows = (await _lyrics.LoadForTrackAsync(track)).Select(x => new LyricsRowViewModel(x)).ToArray();
-        Replace(LyricsRows, rows.Length == 0 ? [new LyricsRowViewModel(new LyricsLine(TimeSpan.Zero, "暂未找到本地歌词"))] : rows);
-    }
-
     private void UpdatePosition(TimeSpan position)
     {
         PositionSeconds = position.TotalSeconds;
@@ -1173,25 +1344,19 @@ public partial class MainWindowViewModel : ViewModelBase
         }
         DurationText = TimeFormatter.Format(_audio.Duration);
         NotifyPlaybackActionChanged();
-        var current = LyricsRows.LastOrDefault(x => x.Timestamp <= position);
-        foreach (var row in LyricsRows) row.IsCurrent = ReferenceEquals(row, current);
     }
 
     private void UpdateSpectrum(IReadOnlyList<float> bands)
     {
-        if (!SpectrumEnabled) return;
-        for (var i = 0; i < Math.Min(SpectrumBars.Count, bands.Count); i++) SpectrumBars[i] = 3 + bands[i] * 92;
+        if (_stopping || !ShowSpectrum) return;
+        for (var i = 0; i < Math.Min(SpectrumBars.Count, bands.Count); i++) SpectrumBars[i].SetAmplitude(bands[i]);
     }
 
-    private async Task HandleCompletedAsync()
+    private void RefreshQueue()
     {
-        var track = _queue.MoveNext(true);
-        if (track is null) { await _audio.StopAsync(); return; }
-        await Dispatcher.UIThread.InvokeAsync(() => PlayTrackCommand.Execute(track));
+        QueuePresentation.Synchronize(QueueTracks, _queue.Items, CurrentTrack?.Id);
+        OnPropertyChanged(nameof(QueueCount)); NotifyFeatureState();
     }
-
-    private void RefreshQueue() => Replace(QueueTracks, QueueIndexing.Create(_queue.Items, _queue.Current?.Id)
-        .Select(x => new QueueItemViewModel(x.DisplayIndex, x.Track, x.IsCurrent)));
 
     public void UpdateLibrarySelection(IEnumerable<Track> tracks)
     {
@@ -1265,19 +1430,143 @@ public partial class MainWindowViewModel : ViewModelBase
         GreetingText = GreetingFormatter.GetGreeting(now);
         LocalTimeText = now.ToString("HH:mm");
     }
-    private void SchedulePlayCount(Guid trackId)
+
+    private async Task WarmGatewayAsync()
+    {
+        try { await _gateway.EnsureReadyAsync(_lifetimeCts.Token); await Accounts.RefreshAsync(); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Log.Warning(ex, "在线接口暂不可用，本地音乐仍可使用"); }
+    }
+
+    private void OnProviderAccountChanged(object? sender, string providerId)
+    {
+        foreach (var track in OnlineSearch.Groups.SelectMany(x => x.Tracks)
+            .Concat(QueueTracks.Select(x => x.Track)).Concat(Favorites).Concat(PlaylistTracks)
+            .Concat(RecentTracks.Select(x => x.Track)).Concat(CurrentTrack is null ? [] : new[] { CurrentTrack })
+            .Where(x => x.ProviderId == providerId).Distinct())
+        {
+            track.Availability = MusicAvailability.Unknown;
+            track.RestrictionReason = "账号授权已变化，将重新确认播放权限";
+        }
+    }
+
+    private void TrackBackgroundOperation(Task task)
+    {
+        lock (_backgroundGate) _backgroundTasks.Add(task);
+        _ = ObserveBackgroundOperationAsync(task);
+    }
+    private async Task ObserveBackgroundOperationAsync(Task task)
+    {
+        try { await task; }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Log.Warning(ex, "后台操作失败"); }
+        finally { lock (_backgroundGate) _backgroundTasks.Remove(task); }
+    }
+
+    private void OnQueueChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() => { if (!_stopping) RefreshQueue(); });
+    private void OnQueueCurrentChanged(object? sender, Track? track) => OnQueueChanged(sender, EventArgs.Empty);
+    private void OnSpectrumUpdated(object? sender, IReadOnlyList<float> bands)
+    {
+        if (!_stopping) _spectrumDispatcher.Submit(bands);
+    }
+
+    private void OnPlaybackSnapshotChanged(object? sender, PlaybackSnapshot snapshot)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_stopping || snapshot.SessionId != _playback.CurrentSessionId) return;
+            var currentChanged = CurrentTrack?.Id != snapshot.Track?.Id;
+            CurrentTrack = snapshot.Track;
+            if (snapshot.Track is { } track)
+            {
+                foreach (var instance in EnumerateTrackInstances(track.Id))
+                {
+                    instance.Availability = track.Availability;
+                    instance.RestrictionReason = track.RestrictionReason;
+                }
+            }
+            ApplyPlaybackState(snapshot.State);
+            NotifyFeatureState();
+            if (snapshot.IsPreview && snapshot.State == PlaybackState.Playing) PlaybackStateText = "正在试听";
+            UpdatePosition(snapshot.Position);
+            if (!string.IsNullOrWhiteSpace(snapshot.Message)) StatusMessage = snapshot.Message;
+            else if (snapshot.PendingTrack is { } pending) StatusMessage = $"正在准备：{pending.Title} · {pending.ProviderName}";
+            else if (snapshot.Track is { } current && snapshot.State == PlaybackState.Playing)
+                StatusMessage = $"{(snapshot.IsPreview ? "正在试听" : "正在播放")}：{current.Title} · {current.ProviderName}";
+            else if (snapshot.Track is { } selected && snapshot.State is PlaybackState.Paused or PlaybackState.Stopped or PlaybackState.Buffering)
+                StatusMessage = $"{StateText(snapshot.State)}：{selected.Title} · {selected.ProviderName}";
+            if (currentChanged) RefreshQueue();
+        });
+    }
+
+
+    private void OnPlaybackStarted(object? sender, PlaybackRequestResult result)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_stopping || !result.Started || result.Track is null || !_recordedSessions.Add(result.SessionId)) return;
+            if (_recordedSessions.Count > 256) { _recordedSessions.Clear(); _recordedSessions.Add(result.SessionId); }
+            _hasPlayed = true;
+            TrackBackgroundOperation(RecordPlaybackStartAsync(result.Track.Id));
+            if (result.SessionId == _playback.CurrentSessionId) SchedulePlayCount(result.Track.Id, _playback.CurrentIntentId);
+        });
+    }
+    private async Task RecordPlaybackStartAsync(Guid trackId)
+    {
+        try
+        {
+            await _library.RecordPlaybackAsync(trackId, TimeSpan.Zero, _lifetimeCts.Token);
+            if (IsRecentPage && !_stopping) await RefreshRecentAsync();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "播放历史保存失败");
+            if (!_stopping) ShowSnackbar("歌曲正在播放，但播放历史保存失败", SnackbarTone.Warning);
+        }
+    }
+
+    private void OnOnlinePlayRequested(object? sender, SearchPlayRequest request) =>
+        TrackBackgroundOperation(PlayFromContextAsync(request.Track, request.Context, request.Preview));
+    private void OnOnlineFavoriteRequested(object? sender, Track track) => TrackBackgroundOperation(ToggleFavoriteAsync(track));
+    private void OnOnlineQueueRequested(object? sender, Track track) => TrackBackgroundOperation(AddToQueueAsync(track));
+    private void OnOnlinePlaylistRequested(object? sender, Track track) => TrackBackgroundOperation(OpenPlaylistPickerAsync(track));
+    private void OnOnlineSearchPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(OnlineSearchViewModel.Query) || _syncingSearch || _stopping) return;
+        _syncingSearch = true;
+        try { SearchText = OnlineSearch.Query; }
+        finally { _syncingSearch = false; }
+    }
+    private void OnSearchHistoryChanged(object? sender, EventArgs e)
+    {
+        if (_stopping || !_settingsLoaded) return;
+        _settings.SearchHistory = OnlineSearch.ExportHistory().ToList();
+        TrackBackgroundOperation(_settingsService.SaveAsync(_settings, _lifetimeCts.Token));
+    }
+    private async Task RunPlaybackActionAsync(Func<Task> action)
+    {
+        if (_stopping) return;
+        try { await action(); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Log.Warning(ex, "播放操作失败"); ShowSnackbar("播放操作失败，请重试或查看来源状态", SnackbarTone.Warning); }
+    }
+
+    private void SchedulePlayCount(Guid trackId, long intentId)
     {
         _playCountCts?.Cancel(); _playCountCts?.Dispose(); _playCountCts = new CancellationTokenSource();
         var token = _playCountCts.Token;
-        _ = Task.Run(async () =>
+        TrackBackgroundOperation(Task.Run(async () =>
         {
             try
             {
                 await Task.Delay(TimeSpan.FromSeconds(10), token);
-                if (CurrentTrack?.Id == trackId && _audio.Position >= TimeSpan.FromSeconds(10)) await _library.RecordPlaybackAsync(trackId, _audio.Position, token);
+                if (_playback.CurrentIntentId == intentId && CurrentTrack?.Id == trackId && _audio.Position >= TimeSpan.FromSeconds(10))
+                    await _library.RecordPlaybackAsync(trackId, _audio.Position, token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        }, token);
+            catch (Exception ex) { Log.Warning(ex, "播放计数保存失败"); }
+        }, token));
     }
     private void UpdatePlayModeText() => PlayModeText = _queue.PlayMode switch { PlayMode.Sequential => "顺序播放", PlayMode.RepeatAll => "列表循环", PlayMode.RepeatOne => "单曲循环", _ => "随机播放" };
     private static string StateText(PlaybackState state) => state switch
@@ -1292,18 +1581,5 @@ public partial class MainWindowViewModel : ViewModelBase
         _ => "未播放"
     };
     private static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> values) { target.Clear(); foreach (var value in values) target.Add(value); }
-    private static void OpenFolder(string path)
-    {
-        try { PlatformLauncher.OpenDirectory(path); }
-        catch (Exception ex) { Log.Warning(ex, "无法打开目录：{Path}", path); }
-    }
-}
-
-public partial class LyricsRowViewModel(LyricsLine line) : ObservableObject
-{
-    public TimeSpan Timestamp => line.Timestamp;
-    public string Text => line.Text;
-    [ObservableProperty] private bool isCurrent;
-    public IBrush Foreground => IsCurrent ? Brush.Parse("#5EE8DE") : Brush.Parse("#A8C1C4");
-    partial void OnIsCurrentChanged(bool value) => OnPropertyChanged(nameof(Foreground));
+    private static void OpenFolder(string path) { Directory.CreateDirectory(path); Process.Start(new ProcessStartInfo("explorer.exe", path) { UseShellExecute = true }); }
 }

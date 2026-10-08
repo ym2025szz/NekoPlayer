@@ -24,16 +24,12 @@ var jsonPath = Path.Combine(reportsDirectory, "playback-verification.json");
 var markdownPath = Path.Combine(reportsDirectory, "playback-verification.md");
 var initialFfmpegPids = GetFfmpegPids();
 var observedFfmpegPids = new HashSet<int>();
-IAudioPlayerService? player = null;
+FfmpegAudioPlayerService? player = null;
 var exitCode = 1;
 
 try
 {
-    Console.WriteLine(options.HeadlessNullOutput
-        ? "This verifier will exercise the FFmpeg playback pipeline with a headless null output."
-        : OperatingSystem.IsWindows()
-            ? "This verifier will briefly play two MP3 files through the Windows default audio device."
-            : "This verifier will exercise the Linux FFmpeg audio pipeline. Set NEKOPLAYER_LINUX_AUDIO_DEVICE=null for headless validation.");
+    Console.WriteLine("This verifier will briefly play two MP3 files through the Windows default audio device.");
     Console.WriteLine($"Volume: {options.Volume:0.00}. The system volume will not be changed.");
     Require(Directory.Exists(options.AudioDirectory), "Precheck", "Audio directory does not exist.");
     var files = Directory.GetFiles(options.AudioDirectory, "*.mp3", SearchOption.TopDirectoryOnly)
@@ -70,12 +66,7 @@ try
     }
 
     var spectrum = new SpectrumService { IsEnabled = true, FramesPerSecond = 30 };
-    if (options.HeadlessNullOutput)
-        Environment.SetEnvironmentVariable(LinuxFfmpegAudioPlayerService.AudioDeviceEnvironmentVariable, LinuxFfmpegAudioPlayerService.NullAudioDevice);
-    player = options.HeadlessNullOutput
-        ? new LinuxFfmpegAudioPlayerService(locator)
-        : AudioPlayerFactory.Create(locator, spectrum);
-    player.Volume = options.Volume;
+    player = new FfmpegAudioPlayerService(locator, spectrum) { Volume = options.Volume };
     var diagnostics = (IAudioPlaybackDiagnostics)player;
     var states = new List<PlaybackState>();
     Exception? playbackFailure = null;
@@ -87,15 +78,14 @@ try
     Require(states.Contains(PlaybackState.Loading), "A - first load", "Loading state was not observed.");
     Require(player.Duration > TimeSpan.Zero, "A - first load", "Duration is zero.");
     Require(playbackFailure is null, "A - first load", playbackFailure?.Message ?? string.Empty);
-    if (OperatingSystem.IsWindows() && !options.HeadlessNullOutput) Require(diagnostics.IsOutputInitialized, "A - first load", "Windows audio output was not initialized.");
-    AddStage(report, "A - first load", true, $"Duration {player.Duration}; platform {Environment.OSVersion.Platform}; buffer {diagnostics.BufferedBytes}/{diagnostics.BufferCapacityBytes}");
+    Require(diagnostics.IsOutputInitialized, "A - first load", "NAudio output was not initialized.");
+    AddStage(report, "A - first load", true, $"Duration {player.Duration}; output initialized; buffer {diagnostics.BufferedBytes}/{diagnostics.BufferCapacityBytes}");
 
     var pcmBeforePlay = diagnostics.TotalPcmBytesReceived;
     await player.PlayAsync();
     await Task.Delay(TimeSpan.FromSeconds(3));
     ObserveNewFfmpegPids(initialFfmpegPids, observedFfmpegPids);
     Require(player.State == PlaybackState.Playing, "B - first play", $"Unexpected state: {player.State}");
-    Require(diagnostics.IsOutputInitialized, "B - first play", "Platform audio output process/device was not initialized.");
     Require(player.Position > TimeSpan.FromSeconds(1.5), "B - first play", $"Position did not advance: {player.Position}");
     Require(diagnostics.TotalPcmBytesReceived > pcmBeforePlay, "B - first play", "No new PCM data was received.");
     Require(playbackFailure is null, "B - first play", playbackFailure?.Message ?? string.Empty);
@@ -337,7 +327,6 @@ sealed class VerifierOptions
 {
     public string AudioDirectory { get; private set; } = string.Empty;
     public float Volume { get; private set; } = 0.15f;
-    public bool HeadlessNullOutput { get; private set; }
     public static VerifierOptions Parse(string[] args)
     {
         var result = new VerifierOptions();
@@ -345,7 +334,6 @@ sealed class VerifierOptions
         {
             if (args[i] == "--audio-directory" && i + 1 < args.Length) result.AudioDirectory = Path.GetFullPath(args[++i]);
             else if (args[i] == "--volume" && i + 1 < args.Length && float.TryParse(args[++i], System.Globalization.CultureInfo.InvariantCulture, out var volume)) result.Volume = Math.Clamp(volume, 0f, 1f);
-            else if (args[i] == "--headless-null-output") result.HeadlessNullOutput = true;
             else throw new ArgumentException($"Unknown or incomplete argument: {args[i]}");
         }
         if (string.IsNullOrWhiteSpace(result.AudioDirectory)) throw new ArgumentException("--audio-directory is required.");

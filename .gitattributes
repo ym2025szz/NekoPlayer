@@ -1,2 +1,15 @@
 * text=auto
+*.cs text eol=lf
+*.axaml text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.ps1 text eol=lf
+*.cmd text eol=crlf
 *.sh text eol=lf
+*.png binary
+*.ico binary
+tools/music-gateway/LICENSES/** -text
+tools/node/LICENSE -text
+tools/node/SHASUMS256.txt -text
+tools/ffmpeg/licenses/** -text

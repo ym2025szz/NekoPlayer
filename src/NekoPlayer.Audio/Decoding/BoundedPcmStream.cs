@@ -4,6 +4,7 @@ namespace NekoPlayer.Audio.Decoding;
 
 internal sealed class BoundedPcmStream : Stream
 {
+    private const int MaximumBlockBytes = 32 * 1024;
     private readonly Channel<byte[]> _channel = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(12)
     {
         FullMode = BoundedChannelFullMode.Wait,
@@ -28,7 +29,12 @@ internal sealed class BoundedPcmStream : Stream
     public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(_cancellationToken, cancellationToken);
-        await _channel.Writer.WriteAsync(buffer.ToArray(), linked.Token);
+        while (!buffer.IsEmpty)
+        {
+            var count = Math.Min(buffer.Length, MaximumBlockBytes);
+            await _channel.Writer.WriteAsync(buffer[..count].ToArray(), linked.Token);
+            buffer = buffer[count..];
+        }
     }
 
     protected override void Dispose(bool disposing)

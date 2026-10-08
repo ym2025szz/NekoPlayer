@@ -9,20 +9,8 @@ $toolsDirectory = Join-Path $root 'tools\ffmpeg'
 $downloadsDirectory = Join-Path $root 'artifacts\downloads'
 $extractDirectory = Join-Path $root 'artifacts\temp\ffmpeg-extract'
 $headers = @{
-    'User-Agent' = 'NekoPlayer-FFmpeg-Setup/1.0.0'
+    'User-Agent' = 'NekoPlayer-FFmpeg-Setup/0.1.1'
     'Accept' = 'application/vnd.github+json'
-}
-
-function Get-LatestRelease {
-    $gh = Get-Command gh -ErrorAction SilentlyContinue
-    if ($null -ne $gh) {
-        $json = (& $gh.Source api 'repos/BtbN/FFmpeg-Builds/releases/latest' 2>$null | Out-String)
-        if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($json)) {
-            return $json | ConvertFrom-Json
-        }
-        Write-Warning 'Authenticated GitHub CLI query was unavailable; falling back to the public GitHub API.'
-    }
-    return Invoke-RestMethod -Uri $apiUrl -Headers $headers
 }
 
 function Test-SharedInstallation([string]$Directory) {
@@ -74,7 +62,7 @@ try {
     }
 
     Write-Host 'Querying the latest BtbN/FFmpeg-Builds GitHub release...' -ForegroundColor Cyan
-    $release = Get-LatestRelease
+    $release = Invoke-RestMethod -Uri $apiUrl -Headers $headers
     $eligible = @($release.assets | Where-Object {
         $_.name -match '^ffmpeg-.*win64-lgpl-shared.*\.zip$' -and
         $_.name -notmatch 'nonfree|win32|linux|macos|arm64'

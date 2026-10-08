@@ -1,14 +1,16 @@
 param(
-    [Parameter(Mandatory)]
     [string]$AudioDirectory,
     [ValidateRange(0.0, 1.0)]
-    [double]$Volume = 0.15,
-    [switch]$HeadlessNullOutput
+    [double]$Volume = 0.15
 )
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-$AudioDirectory = [IO.Path]::GetFullPath($AudioDirectory)
+if ([string]::IsNullOrWhiteSpace($AudioDirectory)) {
+    $projectFolderName = -join ([char]0x9879, [char]0x76EE)
+    $audioFolderName = -join ([char]0x6D4B, [char]0x8BD5, [char]0x97F3, [char]0x9891)
+    $AudioDirectory = Join-Path (Join-Path (Join-Path $env:USERPROFILE 'Desktop') $projectFolderName) $audioFolderName
+}
 $ffmpegDirectory = Join-Path $root 'tools\ffmpeg'
 $verifierProject = Join-Path $root 'tools\NekoPlayer.PlaybackVerifier\NekoPlayer.PlaybackVerifier.csproj'
 $reportsDirectory = Join-Path $root 'artifacts\test-reports'
@@ -35,9 +37,7 @@ try {
 
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    $runArguments = @('run', '--project', $verifierProject, '-c', 'Release', '--no-build', '--', '--audio-directory', $AudioDirectory, '--volume', $Volume.ToString([Globalization.CultureInfo]::InvariantCulture))
-    if ($HeadlessNullOutput) { $runArguments += '--headless-null-output' }
-    $output = & dotnet @runArguments 2>&1
+    $output = & dotnet run --project $verifierProject -c Release --no-build -- --audio-directory $AudioDirectory --volume $Volume 2>&1
     $exitCode = $LASTEXITCODE
     $ErrorActionPreference = $previousErrorActionPreference
     $output | ForEach-Object { Write-Host $_ }

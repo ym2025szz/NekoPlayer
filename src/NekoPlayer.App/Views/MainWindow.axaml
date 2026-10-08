@@ -3,11 +3,61 @@
         xmlns:vm="using:NekoPlayer.App.ViewModels"
         xmlns:core="using:NekoPlayer.Core.Models"
         xmlns:controls="using:NekoPlayer.App.Controls"
-        x:Class="NekoPlayer.App.Views.MainWindow"
+        xmlns:views="using:NekoPlayer.App.Views"
+        xmlns:conv="using:NekoPlayer.App.Converters"
+        xmlns:services="using:NekoPlayer.App.Services"
+        x:Class="NekoPlayer.App.Views.MainWindow" x:Name="ShellWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="猫娘播放器" Icon="avares://NekoPlayer/Assets/AppIcon.png"
         Width="1280" Height="760" MinWidth="860" MinHeight="600"
         WindowStartupLocation="CenterScreen">
+  <Window.Resources>
+    <conv:TrackActionNameConverter x:Key="TrackActionNameConverter"/>
+    <conv:TrackDetailsConverter x:Key="TrackDetailsConverter"/>
+    <conv:TrackMetadataConverter x:Key="TrackMetadataConverter"/>
+    <DataTemplate x:Key="SpectrumTemplate" x:DataType="vm:MainWindowViewModel">
+      <Border Background="{StaticResource CardBrush}" CornerRadius="16" Padding="14,8" Height="84" ClipToBounds="True" IsVisible="{Binding ShowSpectrum}">
+        <Viewbox Stretch="Fill" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+          <ItemsControl ItemsSource="{Binding SpectrumBars}" Height="95" VerticalAlignment="Bottom" AutomationProperties.Name="播放频谱">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Bottom"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate><DataTemplate x:DataType="services:SpectrumBarViewModel"><Border Width="5" Height="{Binding Height}" CornerRadius="3" Background="{StaticResource AccentBrush}" VerticalAlignment="Bottom"/></DataTemplate></ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Viewbox>
+      </Border>
+    </DataTemplate>
+    <DataTemplate x:Key="MixedTrackTemplate" x:DataType="core:Track">
+      <Border Padding="7" CornerRadius="10" Background="Transparent" ToolTip.Tip="{Binding ., Converter={StaticResource TrackDetailsConverter}}">
+        <Grid ColumnDefinitions="44,*,48,36" RowDefinitions="Auto,Auto" ColumnSpacing="7" RowSpacing="4">
+          <controls:TrackCover Width="40" Height="40" CoverPath="{Binding CoverCachePath}" CoverUrl="{Binding CoverUrl}" DecodeWidth="80" CoverCornerRadius="11" VerticalAlignment="Center"/>
+          <StackPanel Grid.Column="1" Spacing="2">
+            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Text="{Binding Artist}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+            <TextBlock Text="{Binding ., Converter={StaticResource TrackMetadataConverter}}" FontSize="10" Foreground="{StaticResource AccentBrightBrush}" TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
+          <TextBlock Grid.Column="2" Text="{Binding Duration, Converter={StaticResource DurationConverter}}" FontSize="11" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"/>
+          <controls:FavoriteButton Grid.Column="3" Width="36" Height="36" AutomationContext="{Binding AutomationContext}" IsChecked="{Binding IsFavorite, Mode=OneWay}" Command="{ReflectionBinding #ShellWindow.DataContext.ToggleFavoriteCommand}" CommandParameter="{Binding}"/>
+          <Grid Grid.Row="1" Grid.ColumnSpan="4" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <TextBlock Text="{Binding AvailabilityText}" Foreground="{StaticResource WarningBrush}" FontSize="10" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding RestrictionReason}" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+              <Button Content="↑" Width="30" Height="36" Padding="0" IsVisible="{ReflectionBinding #ShellWindow.DataContext.IsPlaylistsPage}" IsEnabled="{ReflectionBinding #ShellWindow.DataContext.CanEditPlaylist}" ToolTip.Tip="在歌单中上移" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=在歌单中上移}" Command="{ReflectionBinding #ShellWindow.DataContext.MovePlaylistTrackUpCommand}" CommandParameter="{Binding}"/>
+              <Button Content="↓" Width="30" Height="36" Padding="0" IsVisible="{ReflectionBinding #ShellWindow.DataContext.IsPlaylistsPage}" IsEnabled="{ReflectionBinding #ShellWindow.DataContext.CanEditPlaylist}" ToolTip.Tip="在歌单中下移" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=在歌单中下移}" Command="{ReflectionBinding #ShellWindow.DataContext.MovePlaylistTrackDownCommand}" CommandParameter="{Binding}"/>
+              <Button Classes="icon" Width="36" Height="36" IsEnabled="{Binding CanAttemptPlayback}" Command="{ReflectionBinding #ShellWindow.DataContext.PlayTrackCommand}" CommandParameter="{Binding}" ToolTip.Tip="完整播放" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=完整播放}"><PathIcon Data="M 5,3 L 17,10 L 5,17 Z"/></Button>
+              <Button Content="试听" Width="40" Height="36" Padding="2" FontSize="10" IsVisible="{Binding CanPreview}" IsEnabled="{Binding CanPreview}" Command="{ReflectionBinding #ShellWindow.DataContext.PreviewTrackCommand}" CommandParameter="{Binding}" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=试听片段}"/>
+              <Button Content="⋯" Width="36" Height="36" Padding="2" FontSize="20" ToolTip.Tip="更多歌曲操作" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=更多操作}">
+                <Button.Flyout><MenuFlyout>
+                  <MenuItem Header="下一首播放" Command="{ReflectionBinding #ShellWindow.DataContext.PlayNextCommand}" CommandParameter="{Binding}"/>
+                  <MenuItem Header="加入队列" Command="{ReflectionBinding #ShellWindow.DataContext.AddToQueueCommand}" CommandParameter="{Binding}"/>
+                  <MenuItem Header="添加到歌单" Command="{ReflectionBinding #ShellWindow.DataContext.OpenPlaylistPickerCommand}" CommandParameter="{Binding}"/>
+                  <MenuItem Header="找其他来源或版本" IsVisible="{Binding IsOnline}" Command="{ReflectionBinding #ShellWindow.DataContext.FindOtherVersionCommand}" CommandParameter="{Binding}"/>
+                  <MenuItem Header="从歌单移除" IsVisible="{ReflectionBinding #ShellWindow.DataContext.IsPlaylistsPage}" Command="{ReflectionBinding #ShellWindow.DataContext.RemoveSelectedFromPlaylistCommand}" CommandParameter="{Binding}"/>
+                </MenuFlyout></Button.Flyout>
+              </Button>
+            </StackPanel>
+          </Grid>
+        </Grid>
+      </Border>
+    </DataTemplate>
+  </Window.Resources>
   <Grid RowDefinitions="*,Auto">
     <Border Grid.RowSpan="2" Width="{Binding NavigationWidth}" HorizontalAlignment="Left" Background="{StaticResource SurfaceBrush}" Padding="10,18" ZIndex="10">
       <Grid RowDefinitions="Auto,18,*,Auto">
@@ -23,25 +73,28 @@
 
         <StackPanel Grid.Row="2" Spacing="1">
           <Button Classes="nav" Classes.selected="{Binding IsHomePage}" Command="{Binding NavigateCommand}" CommandParameter="首页" ToolTip.Tip="首页">
-            <Grid Classes="navContent" ColumnDefinitions="30,*"><PathIcon Data="M 2,10 L 10,2 L 18,10 V 18 H 12 V 12 H 8 V 18 H 2 Z"/><TextBlock Grid.Column="1" Text="首页" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
+            <Grid Classes="navContent"><Grid.ColumnDefinitions><ColumnDefinition Width="{Binding NavigationIconWidth}"/><ColumnDefinition Width="{Binding NavigationLabelWidth}"/></Grid.ColumnDefinitions><controls:OutlineIcon Kind="Home"/><TextBlock Grid.Column="1" Text="首页" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
           </Button>
           <Button Classes="nav" Classes.selected="{Binding IsLibraryPage}" Command="{Binding NavigateCommand}" CommandParameter="本地音乐" ToolTip.Tip="本地音乐">
-            <Grid Classes="navContent" ColumnDefinitions="30,*"><PathIcon Data="M 6,3 V 14 A 3,3 0 1 0 8,17 V 7 L 17,5 V 12 A 3,3 0 1 0 19,15 V 2 Z"/><TextBlock Grid.Column="1" Text="本地音乐" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
+            <Grid Classes="navContent"><Grid.ColumnDefinitions><ColumnDefinition Width="{Binding NavigationIconWidth}"/><ColumnDefinition Width="{Binding NavigationLabelWidth}"/></Grid.ColumnDefinitions><controls:OutlineIcon Kind="Library"/><TextBlock Grid.Column="1" Text="本地音乐" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
           </Button>
           <Button Classes="nav" Classes.selected="{Binding IsNowPlayingPage}" Command="{Binding NavigateCommand}" CommandParameter="正在播放" ToolTip.Tip="正在播放">
-            <Grid Classes="navContent" ColumnDefinitions="30,*"><PathIcon Data="M 10,2 A 8,8 0 1 0 10,18 A 8,8 0 1 0 10,2 M 8,6 L 14,10 L 8,14 Z"/><TextBlock Grid.Column="1" Text="正在播放" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
+            <Grid Classes="navContent"><Grid.ColumnDefinitions><ColumnDefinition Width="{Binding NavigationIconWidth}"/><ColumnDefinition Width="{Binding NavigationLabelWidth}"/></Grid.ColumnDefinitions><controls:OutlineIcon Kind="NowPlaying"/><TextBlock Grid.Column="1" Text="正在播放" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
+          </Button>
+          <Button Classes="nav" Classes.selected="{Binding IsSearchPage}" Command="{Binding NavigateSearchCommand}" ToolTip.Tip="在线搜索" AutomationProperties.Name="在线音乐搜索">
+            <Grid Classes="navContent"><Grid.ColumnDefinitions><ColumnDefinition Width="{Binding NavigationIconWidth}"/><ColumnDefinition Width="{Binding NavigationLabelWidth}"/></Grid.ColumnDefinitions><controls:OutlineIcon Kind="Search"/><TextBlock Grid.Column="1" Text="在线搜索" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
           </Button>
           <Button Classes="nav" Classes.selected="{Binding IsRecentPage}" Command="{Binding NavigateCommand}" CommandParameter="最近播放" ToolTip.Tip="最近播放">
-            <Grid Classes="navContent" ColumnDefinitions="30,*"><PathIcon Data="M 10,2 A 8,8 0 1 1 3,6 M 3,2 V 7 H 8 M 10,5 V 10 L 14,12"/><TextBlock Grid.Column="1" Text="最近播放" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
+            <Grid Classes="navContent"><Grid.ColumnDefinitions><ColumnDefinition Width="{Binding NavigationIconWidth}"/><ColumnDefinition Width="{Binding NavigationLabelWidth}"/></Grid.ColumnDefinitions><controls:OutlineIcon Kind="History"/><TextBlock Grid.Column="1" Text="最近播放" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
           </Button>
           <Button Classes="nav" Classes.selected="{Binding IsFavoritesPage}" Command="{Binding NavigateCommand}" CommandParameter="我的收藏" ToolTip.Tip="喜欢的歌曲">
-            <Grid Classes="navContent" ColumnDefinitions="30,*"><PathIcon Foreground="#FF5D7D" Data="M 10,18 L 3,11 C -1,7 2,2 6,3 C 8,3 9,5 10,6 C 11,5 12,3 14,3 C 18,2 21,7 17,11 Z"/><TextBlock Grid.Column="1" Text="喜欢的歌曲" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
+            <Grid Classes="navContent"><Grid.ColumnDefinitions><ColumnDefinition Width="{Binding NavigationIconWidth}"/><ColumnDefinition Width="{Binding NavigationLabelWidth}"/></Grid.ColumnDefinitions><controls:OutlineIcon Kind="Favorite" Foreground="#FF5D7D"/><TextBlock Grid.Column="1" Text="喜欢的歌曲" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
           </Button>
           <Button Classes="nav" Classes.selected="{Binding IsPlaylistsPage}" Command="{Binding NavigateCommand}" CommandParameter="我的歌单" ToolTip.Tip="我的歌单">
-            <Grid Classes="navContent" ColumnDefinitions="30,*"><PathIcon Data="M 3,3 H 17 V 17 H 3 Z M 6,7 H 14 M 6,10 H 14 M 6,13 H 12"/><TextBlock Grid.Column="1" Text="我的歌单" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
+            <Grid Classes="navContent"><Grid.ColumnDefinitions><ColumnDefinition Width="{Binding NavigationIconWidth}"/><ColumnDefinition Width="{Binding NavigationLabelWidth}"/></Grid.ColumnDefinitions><controls:OutlineIcon Kind="Playlist"/><TextBlock Grid.Column="1" Text="我的歌单" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
           </Button>
           <Button Classes="nav" Classes.selected="{Binding IsSettingsPage}" Command="{Binding NavigateCommand}" CommandParameter="设置" ToolTip.Tip="设置">
-            <Grid Classes="navContent" ColumnDefinitions="30,*"><PathIcon Data="M 10,2 L 12,4 L 15,3 L 17,6 L 16,9 L 18,11 L 16,14 L 13,14 L 11,18 L 8,17 L 7,14 L 4,14 L 2,11 L 4,9 L 3,6 L 6,4 L 8,5 Z M 10,7 A 3,3 0 1 0 10,13 A 3,3 0 1 0 10,7"/><TextBlock Grid.Column="1" Text="设置" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
+            <Grid Classes="navContent"><Grid.ColumnDefinitions><ColumnDefinition Width="{Binding NavigationIconWidth}"/><ColumnDefinition Width="{Binding NavigationLabelWidth}"/></Grid.ColumnDefinitions><controls:OutlineIcon Kind="Settings"/><TextBlock Grid.Column="1" Text="设置" IsVisible="{Binding ShowNavigationText}" Margin="8,0,0,0"/></Grid>
           </Button>
         </StackPanel>
 
@@ -55,21 +108,26 @@
       <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,14">
         <StackPanel VerticalAlignment="Center">
           <TextBlock Text="{Binding CurrentPage}" FontSize="25" FontWeight="Bold"/>
-          <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+          <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" AutomationProperties.LiveSetting="Polite"/>
+          <Button IsVisible="{Binding SleepTimer.IsActive}" Content="{Binding SleepTimer.RemainingText, StringFormat='睡眠定时 · 剩余 {0}  · 取消'}" Command="{Binding CancelSleepTimerCommand}" HorizontalAlignment="Left" Padding="0,3" FontSize="11" Foreground="{StaticResource AccentBrightBrush}" Background="Transparent" BorderThickness="0" AutomationProperties.Name="取消睡眠定时"/>
         </StackPanel>
-        <TextBox x:Name="SearchBox" Grid.Column="1" Width="{Binding HeaderSearchWidth}" Watermark="搜索歌曲、歌手或专辑（Ctrl+F）" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" AutomationProperties.Name="全局音乐搜索"/>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Command="{Binding OpenAccountsCommand}" ToolTip.Tip="{Binding Accounts.AccountSummary}" AutomationProperties.Name="账号与授权登录"><StackPanel Orientation="Horizontal" Spacing="7"><controls:OutlineIcon Kind="Account"/><TextBlock Text="账号授权" VerticalAlignment="Center"/></StackPanel></Button>
+          <TextBox x:Name="SearchBox" Width="{Binding HeaderSearchWidth}" Watermark="搜索歌曲、歌手或专辑（Ctrl+F）" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Center" AutomationProperties.Name="全局音乐搜索"/>
+        </StackPanel>
       </Grid>
 
       <Grid Grid.Row="1">
+        <Grid IsVisible="{Binding IsSearchPage}"><views:OnlineSearchView DataContext="{Binding OnlineSearch}"/></Grid>
         <ScrollViewer IsVisible="{Binding IsHomePage}" VerticalScrollBarVisibility="Auto">
           <StackPanel Spacing="14">
             <Border Background="{StaticResource CardBrush}" CornerRadius="20" Padding="24">
               <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Spacing="8">
                   <StackPanel Orientation="Horizontal" Spacing="10"><TextBlock Text="{Binding GreetingText}" Foreground="{StaticResource AccentBrightBrush}" FontSize="16" FontWeight="SemiBold"/><TextBlock Text="{Binding LocalTimeText}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="14" VerticalAlignment="Center"/></StackPanel>
-                  <TextBlock Text="本地音乐，安静地陪你循环" FontSize="27" FontWeight="Bold" TextWrapping="Wrap"/>
-                  <TextBlock Text="导入、播放、收藏、查看歌词和频谱；数据只保存在本机。" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
-                  <WrapPanel Margin="0,10,0,0"><Button Classes="accent" Content="添加音乐" Click="OnAddFilesClick" Margin="0,0,8,8"/><Button Content="扫描文件夹" Click="OnAddFolderClick" Margin="0,0,8,8"/><Button Content="打开本地音乐" Command="{Binding NavigateCommand}" CommandParameter="本地音乐" Margin="0,0,8,8"/></WrapPanel>
+                  <TextBlock Text="本地与在线音乐，安静地陪你循环" FontSize="27" FontWeight="Bold" TextWrapping="Wrap"/>
+                  <TextBlock Text="导入本地歌曲，或按来源搜索在线音乐；收藏和歌单保存在本机。" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                  <WrapPanel Margin="0,10,0,0"><Button Classes="accent" Content="添加音乐" Click="OnAddFilesClick" Margin="0,0,8,8"/><Button Content="扫描文件夹" Click="OnAddFolderClick" Margin="0,0,8,8"/><Button Content="在线搜索" Command="{Binding NavigateSearchCommand}" Margin="0,0,8,8"/><Button Content="打开本地音乐" Command="{Binding NavigateCommand}" CommandParameter="本地音乐" Margin="0,0,8,8"/></WrapPanel>
                 </StackPanel>
                 <TextBlock Grid.Column="1" Text="♫" FontSize="82" Foreground="{StaticResource AccentBrush}" Opacity="0.72" IsVisible="{Binding ShowDecorativeArtwork}" Margin="24,0,10,0"/>
               </Grid>
@@ -83,9 +141,9 @@
 
         <Grid IsVisible="{Binding IsLibraryPage}" RowDefinitions="Auto,Auto,Auto,Auto,*">
           <Border Background="#142126" CornerRadius="16" Padding="14" Margin="0,0,0,10">
-            <Grid ColumnDefinitions="*,Auto">
-              <StackPanel><TextBlock Text="本地音乐库" FontSize="21" FontWeight="Bold"/><TextBlock Text="{Binding TrackCount, StringFormat='曲库共 {0} 首'}" Foreground="{StaticResource AccentBrightBrush}"/></StackPanel>
-              <WrapPanel Grid.Column="1" VerticalAlignment="Center"><Button Classes="accent" Content="＋ 添加音乐" Click="OnAddFilesClick" IsEnabled="{Binding CanStartImport}" Margin="0,0,7,4"/><Button Content="▣ 添加文件夹" Click="OnAddFolderClick" IsEnabled="{Binding CanStartImport}" Margin="0,0,7,4"/><ComboBox Width="118" SelectedItem="{Binding SortField}" ItemsSource="{Binding SortOptions}" Margin="0,0,0,4"/></WrapPanel>
+            <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
+              <WrapPanel><StackPanel Margin="0,0,18,6"><TextBlock Text="本地音乐库" FontSize="21" FontWeight="Bold"/><TextBlock Text="{Binding TrackCount, StringFormat='曲库共 {0} 首'}" Foreground="{StaticResource AccentBrightBrush}"/></StackPanel><Button Classes="accent" Content="＋ 添加音乐" Click="OnAddFilesClick" IsEnabled="{Binding CanStartImport}" Margin="0,0,7,6"/><Button Content="▣ 添加文件夹" Click="OnAddFolderClick" IsEnabled="{Binding CanStartImport}" Margin="0,0,7,6"/><ComboBox Width="118" SelectedItem="{Binding SortField}" ItemsSource="{Binding SortOptions}" Margin="0,0,0,6"/></WrapPanel>
+              <TextBox x:Name="LocalLibrarySearchBox" Grid.Row="1" Text="{Binding LocalSearchText, UpdateSourceTrigger=PropertyChanged}" Watermark="筛选本地曲库：歌曲、歌手或专辑" AutomationProperties.Name="本地音乐库筛选"/>
             </Grid>
           </Border>
 
@@ -99,29 +157,30 @@
           </Border>
 
           <Border Grid.Row="2" IsVisible="{Binding HasLibrarySelection}" Background="#20383D" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" CornerRadius="12" Padding="10" Margin="0,0,0,8">
-            <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{Binding SelectedLibraryTrackCount, StringFormat='已选择 {0} 首'}" VerticalAlignment="Center" FontWeight="SemiBold"/><StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6"><Button Content="全选当前结果" Click="OnSelectAllLibraryClick"/><Button Content="取消选择" Click="OnClearLibrarySelectionClick"/><Button Classes="accent" Content="添加到歌单" Command="{Binding OpenPlaylistPickerForSelectionCommand}"/><Button Content="从音乐库移除" Foreground="{StaticResource ErrorBrush}" Command="{Binding AskRemoveSelectedFromLibraryCommand}"/></StackPanel></Grid>
+            <WrapPanel><TextBlock Text="{Binding SelectedLibraryTrackCount, StringFormat='已选择 {0} 首'}" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,12,6"/><Button Content="全选当前结果" Click="OnSelectAllLibraryClick" Margin="0,0,6,6"/><Button Content="取消选择" Click="OnClearLibrarySelectionClick" Margin="0,0,6,6"/><Button Classes="accent" Content="添加到歌单" Command="{Binding OpenPlaylistPickerForSelectionCommand}" Margin="0,0,6,6"/><Button Content="从音乐库移除" Foreground="{StaticResource ErrorBrush}" Command="{Binding AskRemoveSelectedFromLibraryCommand}" Margin="0,0,0,6"/></WrapPanel>
           </Border>
           <Border Grid.Row="3" IsVisible="{Binding HasLibraryContent}" Background="#142126" CornerRadius="10" Padding="8,6">
-            <Grid ColumnDefinitions="46,50,2*,1.1*,1.1*,72,48,220"><TextBlock Text="#"/><TextBlock Grid.Column="2" Text="歌曲"/><TextBlock Grid.Column="3" Text="歌手"/><TextBlock Grid.Column="4" Text="专辑" IsVisible="{Binding ShowAlbumColumn}"/><TextBlock Grid.Column="5" Text="时长"/><TextBlock Grid.Column="6" Text="喜欢"/><TextBlock Grid.Column="7" Text="操作"/></Grid>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="46"/><ColumnDefinition Width="2*"/><ColumnDefinition Width="{Binding ArtistColumnWidth}"/><ColumnDefinition Width="{Binding AlbumColumnWidth}"/><ColumnDefinition Width="54"/><ColumnDefinition Width="42"/><ColumnDefinition Width="{Binding TrackActionColumnWidth}"/></Grid.ColumnDefinitions><TextBlock Text="#"/><TextBlock Grid.Column="2" Text="歌曲"/><TextBlock Grid.Column="3" Text="歌手"/><TextBlock Grid.Column="4" Text="专辑" IsVisible="{Binding ShowAlbumColumn}"/><TextBlock Grid.Column="5" Text="时长"/><TextBlock Grid.Column="6" Text="喜欢"/><TextBlock Grid.Column="7" Text="操作"/></Grid>
           </Border>
           <Grid Grid.Row="4">
             <ListBox x:Name="LibraryList" IsVisible="{Binding HasLibraryContent}" ItemsSource="{Binding Tracks}" SelectionMode="Multiple" SelectedItem="{Binding SelectedTrack, Mode=TwoWay}" SelectionChanged="OnLibrarySelectionChanged" DoubleTapped="OnTrackDoubleTapped">
               <ListBox.ItemTemplate><DataTemplate x:DataType="core:Track">
-                <Border Background="Transparent" CornerRadius="10" Padding="5" Opacity="{Binding FileExists, Converter={StaticResource FileAvailabilityConverter}, ConverterParameter=Opacity}">
-                  <Grid ColumnDefinitions="46,50,2*,1.1*,1.1*,72,48,220" MinHeight="54">
+                <Border Background="Transparent" CornerRadius="10" Padding="5" Opacity="{Binding CanAttemptPlayback, Converter={StaticResource FileAvailabilityConverter}, ConverterParameter=Opacity}">
+                  <Grid MinHeight="54"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="46"/><ColumnDefinition Width="2*"/><ColumnDefinition Width="{ReflectionBinding $parent[Window].DataContext.ArtistColumnWidth}"/><ColumnDefinition Width="{ReflectionBinding $parent[Window].DataContext.AlbumColumnWidth}"/><ColumnDefinition Width="54"/><ColumnDefinition Width="42"/><ColumnDefinition Width="{ReflectionBinding $parent[Window].DataContext.TrackActionColumnWidth}"/></Grid.ColumnDefinitions>
                     <TextBlock Text="♫" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                    <controls:TrackCover Grid.Column="1" Width="40" Height="40" CoverPath="{Binding CoverCachePath}" DecodeWidth="80" CoverCornerRadius="11"/>
+                    <controls:TrackCover Grid.Column="1" Width="40" Height="40" CoverPath="{Binding CoverCachePath}" CoverUrl="{Binding CoverUrl}" DecodeWidth="80" CoverCornerRadius="11"/>
                     <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="5,0"><TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding FileExists, Converter={StaticResource FileAvailabilityConverter}, ConverterParameter=Text}" FontSize="10" Foreground="{StaticResource ErrorBrush}"/></StackPanel>
                     <TextBlock Grid.Column="3" Text="{Binding Artist}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="5,0"/>
                     <TextBlock Grid.Column="4" Text="{Binding Album}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="5,0" IsVisible="{ReflectionBinding $parent[Window].DataContext.ShowAlbumColumn}"/>
                     <TextBlock Grid.Column="5" Text="{Binding Duration, Converter={StaticResource DurationConverter}}" VerticalAlignment="Center"/>
-                    <controls:FavoriteButton Grid.Column="6" IsChecked="{Binding IsFavorite, Mode=OneWay}" Command="{ReflectionBinding $parent[Window].DataContext.ToggleFavoriteCommand}" CommandParameter="{Binding}"/>
+                    <controls:FavoriteButton Grid.Column="6" AutomationContext="{Binding AutomationContext}" IsChecked="{Binding IsFavorite, Mode=OneWay}" Command="{ReflectionBinding $parent[Window].DataContext.ToggleFavoriteCommand}" CommandParameter="{Binding}"/>
                     <StackPanel Grid.Column="7" Orientation="Horizontal" Spacing="3">
-                      <Button Classes="icon" ToolTip.Tip="立即播放" AutomationProperties.Name="立即播放" IsEnabled="{Binding FileExists}" Command="{ReflectionBinding $parent[Window].DataContext.PlayTrackCommand}" CommandParameter="{Binding}"><PathIcon Data="M 5,3 L 17,10 L 5,17 Z"/></Button>
-                      <Button Classes="icon" ToolTip.Tip="下一首播放" AutomationProperties.Name="下一首播放" Command="{ReflectionBinding $parent[Window].DataContext.PlayNextCommand}" CommandParameter="{Binding}"><PathIcon Data="M 3,4 L 11,10 L 3,16 Z M 11,4 L 19,10 L 11,16 Z"/></Button>
-                      <Button Classes="icon" ToolTip.Tip="加入队列" AutomationProperties.Name="加入队列" Command="{ReflectionBinding $parent[Window].DataContext.AddToQueueCommand}" CommandParameter="{Binding}"><PathIcon Data="M 3,4 H 12 V 6 H 3 Z M 3,9 H 12 V 11 H 3 Z M 3,14 H 12 V 16 H 3 Z M 15,6 H 17 V 9 H 20 V 11 H 17 V 14 H 15 V 11 H 12 V 9 H 15 Z"/></Button>
-                      <Button Classes="icon" ToolTip.Tip="添加到歌单" AutomationProperties.Name="添加到歌单" Command="{ReflectionBinding $parent[Window].DataContext.OpenPlaylistPickerCommand}" CommandParameter="{Binding}"><PathIcon Data="M 3,3 H 12 V 5 H 3 Z M 3,7 H 12 V 9 H 3 Z M 3,11 H 10 V 13 H 3 Z M 14,10 H 16 V 13 H 19 V 15 H 16 V 18 H 14 V 15 H 11 V 13 H 14 Z"/></Button>
-                      <Button Classes="icon" ToolTip.Tip="从音乐库移除" AutomationProperties.Name="从音乐库移除" Foreground="{StaticResource ErrorBrush}" Command="{ReflectionBinding $parent[Window].DataContext.AskRemoveFromLibraryCommand}" CommandParameter="{Binding}"><PathIcon Data="M 4,5 H 16 V 7 H 4 Z M 7,3 H 13 V 5 H 7 Z M 6,7 H 14 L 13,17 H 7 Z"/></Button>
+                      <Button Classes="icon" ToolTip.Tip="立即播放" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=立即播放}" IsEnabled="{Binding CanAttemptPlayback}" Command="{ReflectionBinding $parent[Window].DataContext.PlayTrackCommand}" CommandParameter="{Binding}"><PathIcon Data="M 5,3 L 17,10 L 5,17 Z"/></Button>
+                      <Button Classes="icon" ToolTip.Tip="下一首播放" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=下一首播放}" Command="{ReflectionBinding $parent[Window].DataContext.PlayNextCommand}" CommandParameter="{Binding}"><PathIcon Data="M 3,4 L 11,10 L 3,16 Z M 11,4 L 19,10 L 11,16 Z"/></Button>
+                      <Button Classes="icon" IsVisible="{ReflectionBinding $parent[Window].DataContext.ShowExtendedTrackActions}" ToolTip.Tip="加入队列" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=加入队列}" Command="{ReflectionBinding $parent[Window].DataContext.AddToQueueCommand}" CommandParameter="{Binding}"><PathIcon Data="M 3,4 H 12 V 6 H 3 Z M 3,9 H 12 V 11 H 3 Z M 3,14 H 12 V 16 H 3 Z M 15,6 H 17 V 9 H 20 V 11 H 17 V 14 H 15 V 11 H 12 V 9 H 15 Z"/></Button>
+                      <Button Classes="icon" IsVisible="{ReflectionBinding $parent[Window].DataContext.ShowExtendedTrackActions}" ToolTip.Tip="添加到歌单" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=添加到歌单}" Command="{ReflectionBinding $parent[Window].DataContext.OpenPlaylistPickerCommand}" CommandParameter="{Binding}"><PathIcon Data="M 3,3 H 12 V 5 H 3 Z M 3,7 H 12 V 9 H 3 Z M 3,11 H 10 V 13 H 3 Z M 14,10 H 16 V 13 H 19 V 15 H 16 V 18 H 14 V 15 H 11 V 13 H 14 Z"/></Button>
+                      <Button Classes="icon" IsVisible="{ReflectionBinding $parent[Window].DataContext.ShowExtendedTrackActions}" ToolTip.Tip="从音乐库移除" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=从音乐库移除}" Foreground="{StaticResource ErrorBrush}" Command="{ReflectionBinding $parent[Window].DataContext.AskRemoveFromLibraryCommand}" CommandParameter="{Binding}"><PathIcon Data="M 4,5 H 16 V 7 H 4 Z M 7,3 H 13 V 5 H 7 Z M 6,7 H 14 L 13,17 H 7 Z"/></Button>
+                      <Button Classes="icon" Content="⋯" AutomationProperties.Name="{Binding ., Converter={StaticResource TrackActionNameConverter}, ConverterParameter=更多操作}" IsVisible="{ReflectionBinding $parent[Window].DataContext.ShowExtendedTrackActions, Converter={StaticResource BooleanInverseConverter}}"><Button.Flyout><MenuFlyout><MenuItem Header="加入队列" Command="{ReflectionBinding #ShellWindow.DataContext.AddToQueueCommand}" CommandParameter="{Binding}"/><MenuItem Header="添加到歌单" Command="{ReflectionBinding #ShellWindow.DataContext.OpenPlaylistPickerCommand}" CommandParameter="{Binding}"/><Separator/><MenuItem Header="从音乐库移除" Command="{ReflectionBinding #ShellWindow.DataContext.AskRemoveFromLibraryCommand}" CommandParameter="{Binding}"/></MenuFlyout></Button.Flyout></Button>
                     </StackPanel>
                   </Grid>
                 </Border>
@@ -134,19 +193,62 @@
           </Grid>
         </Grid>
 
-        <ScrollViewer IsVisible="{Binding IsNowPlayingPage}" VerticalScrollBarVisibility="Auto">
-          <Grid ColumnDefinitions="300,*" ColumnSpacing="22">
-            <StackPanel Spacing="12"><controls:TrackCover Width="260" Height="260" HorizontalAlignment="Center" CoverPath="{Binding CurrentCoverPath}" DecodeWidth="520" CoverCornerRadius="24"/><TextBlock Text="{Binding CurrentTitle}" FontSize="25" FontWeight="Bold" TextWrapping="Wrap"/><TextBlock Text="{Binding CurrentArtist}" FontSize="16" Foreground="{StaticResource AccentBrightBrush}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding CurrentAlbum}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding PlaybackStateText}" Foreground="#FF7F99"/><StackPanel Orientation="Horizontal" Spacing="8"><controls:FavoriteButton IsChecked="{Binding CurrentTrack.IsFavorite, Mode=OneWay}" Command="{Binding ToggleFavoriteCommand}" IsEnabled="{Binding CanToggleCurrentFavorite}"/><Button Content="添加当前歌曲到歌单" Command="{Binding OpenPlaylistPickerCommand}" CommandParameter="{Binding CurrentTrack}" IsEnabled="{Binding CanToggleCurrentFavorite}"/></StackPanel></StackPanel>
-            <Grid Grid.Column="1" RowDefinitions="100,*" RowSpacing="12"><Border Background="{StaticResource CardBrush}" CornerRadius="16" Padding="14"><ItemsControl ItemsSource="{Binding SpectrumBars}" VerticalAlignment="Bottom"><ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Bottom"/></ItemsPanelTemplate></ItemsControl.ItemsPanel><ItemsControl.ItemTemplate><DataTemplate x:CompileBindings="False"><Border Width="5" Height="{Binding}" CornerRadius="3" Background="{StaticResource AccentBrush}" VerticalAlignment="Bottom"/></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></Border><Border Grid.Row="1" Background="{StaticResource CardBrush}" CornerRadius="16" Padding="14"><ListBox ItemsSource="{Binding LyricsRows}"><ListBox.ItemTemplate><DataTemplate x:DataType="vm:LyricsRowViewModel"><TextBlock Text="{Binding Text}" Foreground="{Binding Foreground}" FontSize="16" TextAlignment="Center" Margin="7" TextWrapping="Wrap"/></DataTemplate></ListBox.ItemTemplate></ListBox></Border></Grid>
+        <Grid IsVisible="{Binding IsNowPlayingPage}">
+          <Grid IsVisible="{Binding IsCompactLayout, Converter={StaticResource BooleanInverseConverter}}" ColumnDefinitions="280,*" ColumnSpacing="18">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel Spacing="10" Margin="0,0,8,0">
+                <Button Content="{Binding NowPlayingReturnLabel}" Command="{Binding BackToSearchCommand}" HorizontalAlignment="Left"/>
+                <controls:TrackCover Width="252" Height="252" HorizontalAlignment="Center" CoverPath="{Binding CurrentCoverPath}" CoverUrl="{Binding CurrentCoverUrl}" DecodeWidth="504" CoverCornerRadius="24"/>
+                <TextBlock Text="{Binding CurrentTitle}" FontSize="24" FontWeight="Bold" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding CurrentArtist}" FontSize="16" Foreground="{StaticResource AccentBrightBrush}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding CurrentAlbum}" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding CurrentTrack.SourceVersionText}" Foreground="{StaticResource AccentBrightBrush}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding CurrentTrack.AvailabilityText}" Foreground="{StaticResource WarningBrush}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding PlaybackStateText}" Foreground="#FF7F99"/>
+                <WrapPanel>
+                  <controls:FavoriteButton AutomationContext="{Binding CurrentTrack.AutomationContext}" IsChecked="{Binding CurrentTrack.IsFavorite, Mode=OneWay}" Command="{Binding ToggleFavoriteCommand}" IsEnabled="{Binding CanToggleCurrentFavorite}" Margin="0,0,8,6"/>
+                  <Button Content="添加到歌单" Command="{Binding OpenPlaylistPickerCommand}" CommandParameter="{Binding CurrentTrack}" IsEnabled="{Binding CanToggleCurrentFavorite}" Margin="0,0,8,6"/>
+                  <Button Content="桌面歌词" Command="{Binding ToggleDesktopLyricsCommand}" IsEnabled="{Binding CanOpenNowPlaying}" Margin="0,0,8,6"/>
+                </WrapPanel>
+              </StackPanel>
+            </ScrollViewer>
+            <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="12">
+              <ContentControl Content="{Binding}" ContentTemplate="{StaticResource SpectrumTemplate}" IsVisible="{Binding ShowSpectrum}"/>
+              <Border Grid.Row="1" Background="{StaticResource CardBrush}" CornerRadius="16" Padding="8" ClipToBounds="True">
+                <controls:LyricsViewport Presentation="{Binding LyricsPresentation}" ReduceMotion="{Binding ReduceMotion}" JumpRequested="OnLyricJumpRequested"/>
+              </Border>
+            </Grid>
           </Grid>
-        </ScrollViewer>
+          <Grid IsVisible="{Binding IsCompactLayout}" RowDefinitions="Auto,Auto,*" RowSpacing="10">
+            <Border Background="{StaticResource CardBrush}" CornerRadius="16" Padding="12">
+              <Grid ColumnDefinitions="100,*" ColumnSpacing="14">
+                <controls:TrackCover Width="100" Height="100" CoverPath="{Binding CurrentCoverPath}" CoverUrl="{Binding CurrentCoverUrl}" DecodeWidth="200" CoverCornerRadius="16" VerticalAlignment="Top"/>
+                <StackPanel Grid.Column="1" Spacing="4">
+                  <TextBlock Text="{Binding CurrentTitle}" FontSize="21" FontWeight="Bold" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding CurrentTitle}"/>
+                  <TextBlock Text="{Binding CurrentArtist}" Foreground="{StaticResource AccentBrightBrush}" TextTrimming="CharacterEllipsis"/>
+                  <TextBlock Text="{Binding CurrentTrack, Converter={StaticResource TrackMetadataConverter}}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+                  <WrapPanel>
+                    <Button Content="返回搜索" Command="{Binding BackToSearchCommand}" Padding="8,4" FontSize="11" Margin="0,0,6,0"/>
+                    <controls:FavoriteButton Width="36" Height="36" AutomationContext="{Binding CurrentTrack.AutomationContext}" IsChecked="{Binding CurrentTrack.IsFavorite, Mode=OneWay}" Command="{Binding ToggleFavoriteCommand}" IsEnabled="{Binding CanToggleCurrentFavorite}" Margin="0,0,6,0"/>
+                    <Button Content="添加到歌单" Command="{Binding OpenPlaylistPickerCommand}" CommandParameter="{Binding CurrentTrack}" IsEnabled="{Binding CanToggleCurrentFavorite}" Padding="8,4" FontSize="11" Margin="0,0,6,0"/>
+                    <Button Content="桌面歌词" Command="{Binding ToggleDesktopLyricsCommand}" IsEnabled="{Binding CanOpenNowPlaying}" Padding="8,4" FontSize="11"/>
+                  </WrapPanel>
+                </StackPanel>
+              </Grid>
+            </Border>
+            <ContentControl Grid.Row="1" Content="{Binding}" ContentTemplate="{StaticResource SpectrumTemplate}" IsVisible="{Binding ShowSpectrum}"/>
+            <Border Grid.Row="2" Background="{StaticResource CardBrush}" CornerRadius="16" Padding="8" ClipToBounds="True">
+              <controls:LyricsViewport Presentation="{Binding LyricsPresentation}" ReduceMotion="{Binding ReduceMotion}" JumpRequested="OnLyricJumpRequested"/>
+            </Border>
+          </Grid>
+        </Grid>
 
         <Grid IsVisible="{Binding IsFavoritesPage}" RowDefinitions="Auto,*">
           <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,10"><StackPanel><TextBlock Text="喜欢的歌，值得反复贴贴" FontSize="19" FontWeight="Bold"/><TextBlock Text="取消喜欢只更新收藏状态，不会删除音乐文件。" Foreground="{StaticResource TextSecondaryBrush}"/></StackPanel><TextBlock Grid.Column="1" Text="{Binding FavoriteCount, StringFormat='喜欢 {0} 首'}" Foreground="#FF7F99" VerticalAlignment="Center"/></Grid>
           <Grid Grid.Row="1">
-            <ListBox IsVisible="{Binding HasFavoritesContent}" ItemsSource="{Binding Favorites}" SelectedItem="{Binding SelectedTrack}"><ListBox.ItemTemplate><DataTemplate x:DataType="core:Track"><Border Padding="8" Opacity="{Binding FileExists, Converter={StaticResource FileAvailabilityConverter}, ConverterParameter=Opacity}"><Grid ColumnDefinitions="50,*,1.1*,72,176"><controls:TrackCover Width="40" Height="40" CoverPath="{Binding CoverCachePath}" DecodeWidth="80" CoverCornerRadius="11"/><StackPanel Grid.Column="1" Margin="7,0"><TextBlock Text="{Binding Title}" FontWeight="Bold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Artist}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/></StackPanel><TextBlock Grid.Column="2" Text="{Binding Album}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/><TextBlock Grid.Column="3" Text="{Binding Duration, Converter={StaticResource DurationConverter}}" VerticalAlignment="Center"/><StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4"><Button Classes="icon" ToolTip.Tip="播放" AutomationProperties.Name="播放" IsEnabled="{Binding FileExists}" Command="{ReflectionBinding $parent[Window].DataContext.PlayTrackCommand}" CommandParameter="{Binding}"><PathIcon Data="M 5,3 L 17,10 L 5,17 Z"/></Button><controls:FavoriteButton IsChecked="{Binding IsFavorite, Mode=OneWay}" Command="{ReflectionBinding $parent[Window].DataContext.ToggleFavoriteCommand}" CommandParameter="{Binding}"/><Button Classes="icon" ToolTip.Tip="加入队列" AutomationProperties.Name="加入队列" Command="{ReflectionBinding $parent[Window].DataContext.AddToQueueCommand}" CommandParameter="{Binding}"><PathIcon Data="M 3,4 H 12 V 6 H 3 Z M 3,9 H 12 V 11 H 3 Z M 3,14 H 12 V 16 H 3 Z M 15,6 H 17 V 9 H 20 V 11 H 17 V 14 H 15 V 11 H 12 V 9 H 15 Z"/></Button><Button Classes="icon" ToolTip.Tip="添加到歌单" AutomationProperties.Name="添加到歌单" Command="{ReflectionBinding $parent[Window].DataContext.OpenPlaylistPickerCommand}" CommandParameter="{Binding}"><PathIcon Data="M 3,3 H 12 V 5 H 3 Z M 3,7 H 12 V 9 H 3 Z M 3,11 H 10 V 13 H 3 Z M 14,10 H 16 V 13 H 19 V 15 H 16 V 18 H 14 V 15 H 11 V 13 H 14 Z"/></Button></StackPanel></Grid></Border></DataTemplate></ListBox.ItemTemplate></ListBox>
+            <ListBox IsVisible="{Binding HasFavoritesContent}" ItemsSource="{Binding Favorites}" SelectedItem="{Binding SelectedTrack}" ItemTemplate="{StaticResource MixedTrackTemplate}"/>
             <Border IsVisible="{Binding IsFavoritesLoading}" Background="{StaticResource CardBrush}" CornerRadius="16" Padding="28" VerticalAlignment="Top"><StackPanel HorizontalAlignment="Center"><ProgressBar Width="240" IsIndeterminate="True"/><TextBlock Text="正在加载喜欢的歌曲……" Margin="0,10,0,0"/></StackPanel></Border>
-            <Border IsVisible="{Binding IsFavoritesEmpty}" Background="{StaticResource CardBrush}" CornerRadius="16" Padding="32" VerticalAlignment="Top"><StackPanel HorizontalAlignment="Center"><TextBlock Text="♡" FontSize="42" Foreground="#FF7F99" HorizontalAlignment="Center"/><TextBlock Text="还没有喜欢的歌曲，去本地音乐点亮爱心吧。" TextWrapping="Wrap" TextAlignment="Center"/></StackPanel></Border>
+            <Border IsVisible="{Binding IsFavoritesEmpty}" Background="{StaticResource CardBrush}" CornerRadius="16" Padding="32" VerticalAlignment="Top"><StackPanel HorizontalAlignment="Center" Spacing="8"><TextBlock Text="♡" FontSize="42" Foreground="#FF7F99" HorizontalAlignment="Center"/><TextBlock Text="还没有喜欢的歌曲，在本地曲库或在线搜索中点亮爱心吧。" TextWrapping="Wrap" TextAlignment="Center"/><WrapPanel HorizontalAlignment="Center"><Button Content="本地音乐" Command="{Binding NavigateCommand}" CommandParameter="本地音乐" Margin="0,0,8,0"/><Button Content="在线搜索" Command="{Binding NavigateSearchCommand}"/></WrapPanel></StackPanel></Border>
             <Border IsVisible="{Binding IsFavoritesError}" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource ErrorBrush}" BorderThickness="1" CornerRadius="16" Padding="28" VerticalAlignment="Top"><StackPanel HorizontalAlignment="Center"><TextBlock Text="{Binding FavoritesErrorMessage}" Foreground="{StaticResource ErrorBrush}"/><Button Content="重试" Command="{Binding NavigateCommand}" CommandParameter="我的收藏" Margin="0,10,0,0"/></StackPanel></Border>
           </Grid>
         </Grid>
@@ -154,39 +256,95 @@
         <Grid IsVisible="{Binding IsRecentPage}" RowDefinitions="Auto,*">
           <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,10"><StackPanel><TextBlock Text="最近在耳机里路过的声音" FontSize="19" FontWeight="Bold"/><TextBlock Text="移除操作只清理播放历史。" Foreground="{StaticResource TextSecondaryBrush}"/></StackPanel><Button Grid.Column="1" Content="清空最近播放" Foreground="{StaticResource WarningBrush}" Command="{Binding AskClearRecentCommand}" IsEnabled="{Binding HasRecentContent}"/></Grid>
           <Grid Grid.Row="1">
-            <ListBox IsVisible="{Binding HasRecentContent}" ItemsSource="{Binding RecentTracks}"><ListBox.ItemTemplate><DataTemplate x:DataType="core:RecentTrack"><Border Padding="8" Opacity="{Binding Track.FileExists, Converter={StaticResource FileAvailabilityConverter}, ConverterParameter=Opacity}"><Grid ColumnDefinitions="50,*,120,204"><controls:TrackCover Width="40" Height="40" CoverPath="{Binding Track.CoverCachePath}" DecodeWidth="80" CoverCornerRadius="11"/><StackPanel Grid.Column="1" Margin="7,0"><TextBlock Text="{Binding Track.Title}" FontWeight="Bold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Track.Artist}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/></StackPanel><StackPanel Grid.Column="2" VerticalAlignment="Center"><TextBlock Text="{Binding PlayedAt, Converter={StaticResource RelativeTimeConverter}}"/><TextBlock Text="{Binding LastPosition, Converter={StaticResource DurationConverter}, StringFormat='上次 {0}'}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/></StackPanel><StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="3"><Button Classes="icon" ToolTip.Tip="再听一次" AutomationProperties.Name="再听一次" IsEnabled="{Binding Track.FileExists}" Command="{ReflectionBinding $parent[Window].DataContext.PlayTrackCommand}" CommandParameter="{Binding Track}"><PathIcon Data="M 5,3 L 17,10 L 5,17 Z"/></Button><controls:FavoriteButton IsChecked="{Binding Track.IsFavorite, Mode=OneWay}" Command="{ReflectionBinding $parent[Window].DataContext.ToggleFavoriteCommand}" CommandParameter="{Binding Track}"/><Button Classes="icon" ToolTip.Tip="加入队列" AutomationProperties.Name="加入队列" Command="{ReflectionBinding $parent[Window].DataContext.AddToQueueCommand}" CommandParameter="{Binding Track}"><PathIcon Data="M 3,4 H 12 V 6 H 3 Z M 3,9 H 12 V 11 H 3 Z M 3,14 H 12 V 16 H 3 Z M 15,6 H 17 V 9 H 20 V 11 H 17 V 14 H 15 V 11 H 12 V 9 H 15 Z"/></Button><Button Classes="icon" ToolTip.Tip="添加到歌单" AutomationProperties.Name="添加到歌单" Command="{ReflectionBinding $parent[Window].DataContext.OpenPlaylistPickerCommand}" CommandParameter="{Binding Track}"><PathIcon Data="M 3,3 H 12 V 5 H 3 Z M 3,7 H 12 V 9 H 3 Z M 3,11 H 10 V 13 H 3 Z M 14,10 H 16 V 13 H 19 V 15 H 16 V 18 H 14 V 15 H 11 V 13 H 14 Z"/></Button><Button Classes="icon" ToolTip.Tip="从最近播放中移除" AutomationProperties.Name="从最近播放中移除" Command="{ReflectionBinding $parent[Window].DataContext.RemoveRecentCommand}" CommandParameter="{Binding}"><PathIcon Data="M 4,5.5 L 5.5,4 L 10,8.5 L 14.5,4 L 16,5.5 L 11.5,10 L 16,14.5 L 14.5,16 L 10,11.5 L 5.5,16 L 4,14.5 L 8.5,10 Z"/></Button></StackPanel></Grid></Border></DataTemplate></ListBox.ItemTemplate></ListBox>
+            <ListBox IsVisible="{Binding HasRecentContent}" ItemsSource="{Binding RecentTracks}">
+              <ListBox.ItemTemplate><DataTemplate x:DataType="core:RecentTrack">
+                <Grid RowDefinitions="Auto,Auto">
+                  <ContentControl Content="{Binding Track}" ContentTemplate="{StaticResource MixedTrackTemplate}"/>
+                  <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="7,0,7,4">
+                    <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" VerticalAlignment="Center"><Run Text="{Binding PlayedAt, Converter={StaticResource RelativeTimeConverter}}"/><Run Text=" · 上次 "/><Run Text="{Binding LastPosition, Converter={StaticResource DurationConverter}}"/></TextBlock>
+                    <Button Grid.Column="1" Content="移除此记录" Padding="7,3" FontSize="10" AutomationProperties.Name="{Binding Track, Converter={StaticResource TrackActionNameConverter}, ConverterParameter=从最近播放中移除}" Command="{ReflectionBinding #ShellWindow.DataContext.RemoveRecentCommand}" CommandParameter="{Binding}"/>
+                  </Grid>
+                </Grid>
+              </DataTemplate></ListBox.ItemTemplate>
+            </ListBox>
             <Border IsVisible="{Binding IsRecentLoading}" Background="{StaticResource CardBrush}" CornerRadius="16" Padding="28" VerticalAlignment="Top"><StackPanel HorizontalAlignment="Center"><ProgressBar Width="240" IsIndeterminate="True"/><TextBlock Text="正在加载最近播放……" Margin="0,10,0,0"/></StackPanel></Border>
             <Border IsVisible="{Binding IsRecentEmpty}" Background="{StaticResource CardBrush}" CornerRadius="16" Padding="32" VerticalAlignment="Top"><StackPanel HorizontalAlignment="Center"><TextBlock Text="◷" FontSize="42" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/><TextBlock Text="最近播放还是空的，播放一首歌后会出现在这里。" TextWrapping="Wrap" TextAlignment="Center"/></StackPanel></Border>
             <Border IsVisible="{Binding IsRecentError}" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource ErrorBrush}" BorderThickness="1" CornerRadius="16" Padding="28" VerticalAlignment="Top"><StackPanel HorizontalAlignment="Center"><TextBlock Text="{Binding RecentErrorMessage}" Foreground="{StaticResource ErrorBrush}"/><Button Content="重试" Command="{Binding NavigateCommand}" CommandParameter="最近播放" Margin="0,10,0,0"/></StackPanel></Border>
-            <Border IsVisible="{Binding RecentClearConfirmationVisible}" Background="#F21B2D32" BorderBrush="{StaticResource WarningBrush}" BorderThickness="1" CornerRadius="16" Padding="22" Width="520" MaxWidth="620" HorizontalAlignment="Center" VerticalAlignment="Center" ZIndex="30"><StackPanel Spacing="12"><TextBlock Text="清空最近播放？" FontSize="20" FontWeight="Bold"/><TextBlock Text="这只会清除播放记录，不会删除歌曲文件、收藏、歌单或播放队列。" TextWrapping="Wrap"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8"><Button Content="取消" Command="{Binding CancelClearRecentCommand}"/><Button Classes="accent" Content="清空记录" Command="{Binding ConfirmClearRecentCommand}"/></StackPanel></StackPanel></Border>
+            <Border x:Name="RecentClearDialog" KeyboardNavigation.TabNavigation="Cycle" IsVisible="{Binding RecentClearConfirmationVisible}" Background="#F21B2D32" BorderBrush="{StaticResource WarningBrush}" BorderThickness="1" CornerRadius="16" Padding="22" Width="520" MaxWidth="620" HorizontalAlignment="Center" VerticalAlignment="Center" ZIndex="30"><StackPanel Spacing="12"><TextBlock Text="清空最近播放？" FontSize="20" FontWeight="Bold"/><TextBlock Text="这只会清除播放记录，不会删除歌曲文件、收藏、歌单或播放队列。" TextWrapping="Wrap"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8"><Button Content="取消" Command="{Binding CancelClearRecentCommand}" IsDefault="True" IsCancel="True"/><Button Classes="accent" Content="清空记录" Command="{Binding ConfirmClearRecentCommand}"/></StackPanel></StackPanel></Border>
           </Grid>
         </Grid>
 
-        <Grid IsVisible="{Binding IsPlaylistsPage}" ColumnDefinitions="260,*" ColumnSpacing="14">
-          <Border Background="{StaticResource CardBrush}" CornerRadius="16" Padding="12">
+        <Grid IsVisible="{Binding IsPlaylistsPage}" ColumnDefinitions="Auto,*">
+          <Border IsVisible="{Binding IsCompactLayout, Converter={StaticResource BooleanInverseConverter}}" Width="260" Background="{StaticResource CardBrush}" CornerRadius="16" Padding="12" Margin="0,0,14,0">
             <Grid RowDefinitions="Auto,Auto,*,Auto">
               <TextBlock Text="我的歌单" FontSize="19" FontWeight="Bold"/>
-              <TextBox Grid.Row="1" Text="{Binding PlaylistName}" Margin="0,9"/>
-              <ListBox Grid.Row="2" ItemsSource="{Binding Playlists}" SelectedItem="{Binding SelectedPlaylist}"><ListBox.ItemTemplate><DataTemplate x:DataType="core:Playlist"><TextBlock Text="{Binding Name}" Padding="8"/></DataTemplate></ListBox.ItemTemplate></ListBox>
-              <StackPanel Grid.Row="3" Spacing="6"><Button Classes="accent" Content="创建歌单" Command="{Binding CreatePlaylistCommand}"/><Button Content="重命名所选" Command="{Binding RenamePlaylistCommand}"/><Button Content="删除所选" Command="{Binding AskDeletePlaylistCommand}" Foreground="{StaticResource ErrorBrush}"/><Border IsVisible="{Binding DeleteConfirmationVisible}" Background="#40252B" CornerRadius="10" Padding="10"><StackPanel><TextBlock Text="确认删除歌单？不会删除音乐文件。" TextWrapping="Wrap"/><StackPanel Orientation="Horizontal" Spacing="6" Margin="0,8,0,0"><Button Content="取消" Command="{Binding CancelDeletePlaylistCommand}"/><Button Content="确认" Command="{Binding ConfirmDeletePlaylistCommand}"/></StackPanel></StackPanel></Border></StackPanel>
+              <TextBox Grid.Row="1" Text="{Binding PlaylistName}" Margin="0,9" Watermark="歌单名称" AutomationProperties.Name="歌单名称"/>
+              <ListBox Grid.Row="2" ItemsSource="{Binding Playlists}" SelectedItem="{Binding SelectedPlaylist}" AutomationProperties.Name="选择歌单"><ListBox.ItemTemplate><DataTemplate x:DataType="core:Playlist"><TextBlock Text="{Binding Name}" Padding="8" TextTrimming="CharacterEllipsis"/></DataTemplate></ListBox.ItemTemplate></ListBox>
+              <StackPanel Grid.Row="3" Spacing="6"><Button Classes="accent" Content="创建歌单" Command="{Binding CreatePlaylistCommand}"/><Button Content="重命名所选" Command="{Binding RenamePlaylistCommand}" IsEnabled="{Binding HasSelectedPlaylist}"/><Button Content="删除所选" Command="{Binding AskDeletePlaylistCommand}" IsEnabled="{Binding HasSelectedPlaylist}" Foreground="{StaticResource ErrorBrush}"/></StackPanel>
             </Grid>
           </Border>
           <Border Grid.Column="1" Background="{StaticResource CardBrush}" CornerRadius="16" Padding="14">
-            <Grid RowDefinitions="Auto,*">
-              <Grid ColumnDefinitions="*,Auto"><TextBlock Text="歌单歌曲" FontSize="19" FontWeight="Bold"/><Button Grid.Column="1" Classes="accent" Content="添加歌曲" ToolTip.Tip="从本地音乐中选择一首或多首" Command="{Binding OpenTrackPickerCommand}"/></Grid>
-              <ListBox Grid.Row="1" ItemsSource="{Binding PlaylistTracks}"><ListBox.ItemTemplate><DataTemplate x:DataType="core:Track"><Grid ColumnDefinitions="48,*,42,90,70" ColumnSpacing="6" Margin="4"><controls:TrackCover Width="40" Height="40" CoverPath="{Binding CoverCachePath}" DecodeWidth="80" CoverCornerRadius="11"/><StackPanel Grid.Column="1"><TextBlock Text="{Binding Title}" FontWeight="Bold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Artist}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/></StackPanel><controls:FavoriteButton Grid.Column="2" IsChecked="{Binding IsFavorite, Mode=OneWay}" Command="{ReflectionBinding $parent[Window].DataContext.ToggleFavoriteCommand}" CommandParameter="{Binding}"/><Button Grid.Column="3" Content="播放" Command="{ReflectionBinding $parent[Window].DataContext.PlayTrackCommand}" CommandParameter="{Binding}"/><Button Grid.Column="4" Content="移除" Command="{ReflectionBinding $parent[Window].DataContext.RemoveSelectedFromPlaylistCommand}" CommandParameter="{Binding}"/></Grid></DataTemplate></ListBox.ItemTemplate></ListBox>
+            <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="8">
+              <Border IsVisible="{Binding IsCompactLayout}" Background="#142126" CornerRadius="10" Padding="10">
+                <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,*" ColumnSpacing="8" RowSpacing="8">
+                  <ComboBox ItemsSource="{Binding Playlists}" SelectedItem="{Binding SelectedPlaylist}" PlaceholderText="选择歌单" HorizontalAlignment="Stretch" AutomationProperties.Name="选择歌单"><ComboBox.ItemTemplate><DataTemplate x:DataType="core:Playlist"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate></ComboBox>
+                  <TextBox Grid.Column="1" Text="{Binding PlaylistName}" Watermark="歌单名称" AutomationProperties.Name="歌单名称"/>
+                  <WrapPanel Grid.Row="1" Grid.ColumnSpan="2"><Button Classes="accent" Content="创建歌单" Command="{Binding CreatePlaylistCommand}" Margin="0,0,6,0"/><Button Content="重命名" Command="{Binding RenamePlaylistCommand}" IsEnabled="{Binding HasSelectedPlaylist}" Margin="0,0,6,0"/><Button Content="删除歌单" Command="{Binding AskDeletePlaylistCommand}" IsEnabled="{Binding HasSelectedPlaylist}" Foreground="{StaticResource ErrorBrush}"/></WrapPanel>
+                </Grid>
+              </Border>
+              <WrapPanel Grid.Row="1">
+                <TextBlock Text="歌单歌曲" FontSize="19" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,14,6"/>
+                <Button Classes="accent" Content="播放全部" Command="{Binding PlayPlaylistCommand}" IsEnabled="{Binding HasSelectedPlaylist}" Margin="0,0,6,6"/>
+                <Button Content="加入队列" Command="{Binding AddPlaylistToQueueCommand}" IsEnabled="{Binding HasSelectedPlaylist}" Margin="0,0,6,6"/>
+                <Button Content="添加歌曲" ToolTip.Tip="从本地音乐中选择一首或多首" Command="{Binding OpenTrackPickerCommand}" IsEnabled="{Binding CanEditPlaylist}" Margin="0,0,0,6"/>
+              </WrapPanel>
+              <TextBox Grid.Row="2" Text="{Binding PlaylistSearchText, UpdateSourceTrigger=PropertyChanged}" Watermark="筛选歌单歌曲、歌手或专辑" AutomationProperties.Name="歌单歌曲筛选"/>
+              <ListBox x:Name="PlaylistTrackList" Grid.Row="3" ItemsSource="{Binding VisiblePlaylistTracks}" ItemTemplate="{StaticResource MixedTrackTemplate}" IsEnabled="{Binding CanEditPlaylist}" PointerPressed="OnPlaylistTrackPointerPressed" PointerMoved="OnPlaylistTrackPointerMoved" PointerReleased="OnPlaylistTrackPointerReleased" ToolTip.Tip="拖动歌曲调整顺序；更多操作可逐首上移或下移" AutomationProperties.Name="歌单歌曲列表"/>
+              <Border Grid.Row="3" IsVisible="{Binding HasSelectedPlaylist, Converter={StaticResource BooleanInverseConverter}}" Background="#142126" CornerRadius="12" Padding="20" VerticalAlignment="Top"><TextBlock Text="选择一个歌单，或为喜欢的音乐创建新歌单。" TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}"/></Border>
             </Grid>
           </Border>
+          <Border x:Name="PlaylistDeleteDialog" Grid.ColumnSpan="2" KeyboardNavigation.TabNavigation="Cycle" IsVisible="{Binding DeleteConfirmationVisible}" Background="#F21B2D32" BorderBrush="{StaticResource ErrorBrush}" BorderThickness="1" CornerRadius="16" Padding="22" Width="440" HorizontalAlignment="Center" VerticalAlignment="Center" ZIndex="30"><StackPanel Spacing="12"><TextBlock Text="确认删除歌单？" FontSize="20" FontWeight="Bold"/><TextBlock Text="删除只清理歌单，不会删除音乐文件。" TextWrapping="Wrap"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8"><Button Content="取消" Command="{Binding CancelDeletePlaylistCommand}" IsDefault="True" IsCancel="True"/><Button Content="确认删除" Command="{Binding ConfirmDeletePlaylistCommand}" Foreground="{StaticResource ErrorBrush}"/></StackPanel></StackPanel></Border>
         </Grid>
 
-        <ScrollViewer IsVisible="{Binding IsSettingsPage}" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer x:Name="SettingsScroll" IsVisible="{Binding IsSettingsPage}" VerticalScrollBarVisibility="Auto">
           <StackPanel Spacing="14" MaxWidth="760" HorizontalAlignment="Left">
+            <views:ProviderAccountsView DataContext="{Binding Accounts}"/>
             <TextBlock Text="播放与体验" FontSize="22" FontWeight="Bold"/>
             <Border Background="{StaticResource CardBrush}" CornerRadius="16" Padding="18"><StackPanel Spacing="12"><Grid ColumnDefinitions="170,*"><TextBlock Text="默认音量"/><Slider Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding VolumePercent}"/></Grid><Grid ColumnDefinitions="170,*"><TextBlock Text="默认播放模式"/><ComboBox Grid.Column="1" ItemsSource="{Binding PlayModeOptions}" SelectedItem="{Binding PlayModeText}"/></Grid><CheckBox Content="静音" IsChecked="{Binding IsMuted}"/><CheckBox Content="启用基础频谱" IsChecked="{Binding SpectrumEnabled}"/><CheckBox Content="减少动态效果" IsChecked="{Binding ReduceMotion}"/><CheckBox Content="扫描文件夹时递归子目录" IsChecked="{Binding IncludeSubdirectories}"/><Grid ColumnDefinitions="170,*"><TextBlock Text="频谱刷新率"/><Slider Grid.Column="1" Minimum="10" Maximum="60" Value="{Binding SpectrumFps}" TickFrequency="5"/></Grid></StackPanel></Border>
+            <Border Background="{StaticResource CardBrush}" CornerRadius="16" Padding="18">
+              <StackPanel Spacing="12">
+                <TextBlock Text="睡眠定时" FontSize="18" FontWeight="Bold"/>
+                <TextBlock Text="{Binding SleepTimer.StatusText}" Foreground="{StaticResource AccentBrightBrush}" AutomationProperties.LiveSetting="Polite"/>
+                <TextBlock Text="倒计时结束后暂停播放。" Foreground="{StaticResource TextSecondaryBrush}"/>
+                <WrapPanel>
+                  <Button Content="15 分钟" Command="{Binding StartSleepTimerCommand}" Margin="0,0,8,6"><Button.CommandParameter><x:Int32>15</x:Int32></Button.CommandParameter></Button>
+                  <Button Content="30 分钟" Command="{Binding StartSleepTimerCommand}" Margin="0,0,8,6"><Button.CommandParameter><x:Int32>30</x:Int32></Button.CommandParameter></Button>
+                  <Button Content="60 分钟" Command="{Binding StartSleepTimerCommand}" Margin="0,0,8,6"><Button.CommandParameter><x:Int32>60</x:Int32></Button.CommandParameter></Button>
+                  <Button Content="90 分钟" Command="{Binding StartSleepTimerCommand}" Margin="0,0,8,6"><Button.CommandParameter><x:Int32>90</x:Int32></Button.CommandParameter></Button>
+                  <Button Content="取消定时" Command="{Binding CancelSleepTimerCommand}" IsEnabled="{Binding SleepTimer.IsActive}" Margin="0,0,0,6"/>
+                </WrapPanel>
+                <WrapPanel>
+                  <NumericUpDown Width="112" Minimum="1" Maximum="240" Increment="1" FormatString="0" Value="{Binding CustomSleepMinutes, Mode=TwoWay}" AutomationProperties.Name="自定义睡眠分钟数" Margin="0,0,8,0"/>
+                  <TextBlock Text="分钟" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                  <Button Content="开始自定义定时" Command="{Binding StartCustomSleepTimerCommand}"/>
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+            <Border Background="{StaticResource CardBrush}" CornerRadius="16" Padding="18">
+              <StackPanel Spacing="12">
+                <TextBlock Text="桌面歌词" FontSize="18" FontWeight="Bold"/>
+                <CheckBox Content="显示桌面歌词" IsChecked="{Binding DesktopLyricsEnabled}" AutomationProperties.Name="显示桌面歌词"/>
+                <CheckBox Content="锁定歌词窗口（鼠标穿透）" IsChecked="{Binding DesktopLyricsLocked}" IsEnabled="{Binding DesktopLyricsEnabled}"/>
+                <Grid ColumnDefinitions="130,*"><TextBlock Text="歌词字号" VerticalAlignment="Center"/><Slider Grid.Column="1" Minimum="22" Maximum="48" TickFrequency="2" Value="{Binding DesktopLyricsFontSize}" AutomationProperties.Name="桌面歌词字号"/></Grid>
+                <Grid ColumnDefinitions="130,*"><TextBlock Text="歌词透明度" VerticalAlignment="Center"/><Slider Grid.Column="1" Minimum="0.6" Maximum="1" TickFrequency="0.1" Value="{Binding DesktopLyricsOpacity}" AutomationProperties.Name="桌面歌词透明度"/></Grid>
+                <Button Content="解除桌面歌词锁定" Command="{Binding UnlockDesktopLyricsCommand}" IsEnabled="{Binding DesktopLyricsLocked}" HorizontalAlignment="Left"/>
+              </StackPanel>
+            </Border>
+            <Border Background="{StaticResource CardBrush}" CornerRadius="16" Padding="18"><StackPanel Spacing="12"><TextBlock Text="窗口与系统控制" FontSize="18" FontWeight="Bold"/><CheckBox Content="关闭主窗口时收起到系统托盘" IsChecked="{Binding CloseToTray}"/><CheckBox Content="启用系统媒体控制与媒体快捷键" IsChecked="{Binding SystemMediaControlsEnabled}"/><TextBlock Text="{Binding SystemMediaStatus}" TextWrapping="Wrap" Foreground="{StaticResource AccentBrightBrush}"/><TextBlock Text="收起后可通过系统托盘显示窗口或彻底退出。" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"/></StackPanel></Border>
             <TextBlock Text="程序与数据" FontSize="22" FontWeight="Bold"/>
             <Border Background="{StaticResource CardBrush}" CornerRadius="16" Padding="18"><StackPanel Spacing="8"><TextBlock Text="{Binding FfmpegStatus}" FontWeight="Bold"/><TextBlock Text="{Binding FfmpegVersion}" TextWrapping="Wrap"/><TextBlock Text="{Binding FfmpegSharedStatus}"/><TextBlock Text="{Binding FfmpegPath}" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"/><TextBlock Text="{Binding AppVersion, StringFormat='v{0}'}"/><WrapPanel><Button Content="打开数据目录" Command="{Binding OpenDataFolderCommand}" Margin="0,0,8,0"/><Button Content="打开日志目录" Command="{Binding OpenLogsFolderCommand}"/></WrapPanel><TextBlock Text="日志可能包含本地音乐文件路径，仅用于本机排错。" Foreground="{StaticResource WarningBrush}" TextWrapping="Wrap"/></StackPanel></Border>
             <TextBlock Text="关于" FontSize="22" FontWeight="Bold"/>
-            <Border Background="{StaticResource CardBrush}" CornerRadius="16" Padding="18"><StackPanel Spacing="8"><TextBlock Text="创作者：梦怀殇" Foreground="{StaticResource TextSecondaryBrush}"/><TextBlock Text="本地音乐播放器 · 数据保存在本机" Foreground="{StaticResource TextDisabledBrush}"/></StackPanel></Border>
+            <Border Background="{StaticResource CardBrush}" CornerRadius="16" Padding="18"><StackPanel Spacing="8"><TextBlock Text="创作者：梦怀殇" Foreground="{StaticResource TextSecondaryBrush}"/><TextBlock Text="本地与在线音乐播放器 · 数据保存在本机" Foreground="{StaticResource TextDisabledBrush}"/></StackPanel></Border>
           </StackPanel>
         </ScrollViewer>
       </Grid>
@@ -194,15 +352,28 @@
 
     <Border Grid.Row="1" Margin="{Binding ShellContentMargin}" Background="#142126" BorderBrush="#29454B" BorderThickness="0,1,0,0" Padding="12,8">
       <Grid>
-        <Grid IsVisible="{Binding IsCompactLayout}" RowDefinitions="Auto,Auto">
-          <Grid ColumnDefinitions="44,*,Auto,40" ColumnSpacing="8"><controls:TrackCover Width="40" Height="40" CoverPath="{Binding CurrentCoverPath}" DecodeWidth="80" CoverCornerRadius="11"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding CurrentTitle}" FontWeight="Bold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding PlaybackStateText}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/></StackPanel><StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="3"><controls:FavoriteButton IsChecked="{Binding CurrentTrack.IsFavorite, Mode=OneWay}" Command="{Binding ToggleFavoriteCommand}" IsEnabled="{Binding CanToggleCurrentFavorite}"/><Button Classes="icon" ToolTip.Tip="上一首" AutomationProperties.Name="上一首" Command="{Binding PreviousCommand}"><PathIcon Data="M 4,4 H 6 V 16 H 4 Z M 7,10 L 16,4 V 16 Z"/></Button><Button Classes="accent icon" Command="{Binding TogglePlayCommand}" IsEnabled="{Binding CanTogglePlay}" ToolTip.Tip="{Binding PrimaryPlayTooltip}" AutomationProperties.Name="{Binding PrimaryPlayAutomationName}"><Grid Width="20" Height="20"><PathIcon Data="M 4,2 L 18,10 L 4,18 Z" IsVisible="{Binding ShowPlayIcon}"/><PathIcon Data="M 4,2 H 8 V 18 H 4 Z M 12,2 H 16 V 18 H 12 Z" IsVisible="{Binding ShowPauseIcon}"/><ProgressBar Width="20" IsIndeterminate="True" IsVisible="{Binding ShowPlaybackBusyIcon}" VerticalAlignment="Center"/></Grid></Button><Button Classes="icon" ToolTip.Tip="下一首" AutomationProperties.Name="下一首" Command="{Binding NextCommand}"><PathIcon Data="M 14,4 H 16 V 16 H 14 Z M 13,10 L 4,4 V 16 Z"/></Button></StackPanel><Button Grid.Column="3" Classes="icon" ToolTip.Tip="播放队列" AutomationProperties.Name="播放队列" Command="{Binding ToggleQueueCommand}"><PathIcon Data="M 3,4 H 17 V 6 H 3 Z M 3,9 H 17 V 11 H 3 Z M 3,14 H 17 V 16 H 3 Z"/></Button></Grid>
+        <Grid IsVisible="{Binding IsWideLayout, Converter={StaticResource BooleanInverseConverter}}" RowDefinitions="Auto,Auto">
+          <Grid ColumnDefinitions="44,*,Auto,40,40" ColumnSpacing="8"><Button Grid.ColumnSpan="2" Command="{Binding NavigateCommand}" CommandParameter="正在播放" IsEnabled="{Binding CanOpenNowPlaying}" Padding="0" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Stretch" ToolTip.Tip="打开正在播放与歌词" AutomationProperties.Name="打开正在播放"><Grid ColumnDefinitions="44,*" ColumnSpacing="8"><controls:TrackCover Width="40" Height="40" CoverPath="{Binding CurrentCoverPath}" CoverUrl="{Binding CurrentCoverUrl}" DecodeWidth="80" CoverCornerRadius="11"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding CurrentTitle}" FontWeight="Bold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding PlaybackStateText}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/></StackPanel></Grid></Button><StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="3"><controls:FavoriteButton AutomationContext="{Binding CurrentTrack.AutomationContext}" IsChecked="{Binding CurrentTrack.IsFavorite, Mode=OneWay}" Command="{Binding ToggleFavoriteCommand}" IsEnabled="{Binding CanToggleCurrentFavorite}"/><Button Classes="icon" ToolTip.Tip="上一首" AutomationProperties.Name="上一首" Command="{Binding PreviousCommand}"><PathIcon Data="M 4,4 H 6 V 16 H 4 Z M 7,10 L 16,4 V 16 Z"/></Button><Button Classes="accent icon" Command="{Binding TogglePlayCommand}" IsEnabled="{Binding CanTogglePlay}" ToolTip.Tip="{Binding PrimaryPlayTooltip}" AutomationProperties.Name="{Binding PrimaryPlayAutomationName}"><Grid Width="20" Height="20"><PathIcon Data="M 4,2 L 18,10 L 4,18 Z" IsVisible="{Binding ShowPlayIcon}"/><PathIcon Data="M 4,2 H 8 V 18 H 4 Z M 12,2 H 16 V 18 H 12 Z" IsVisible="{Binding ShowPauseIcon}"/><ProgressBar Width="20" IsIndeterminate="True" IsVisible="{Binding ShowPlaybackBusyIcon}" VerticalAlignment="Center"/></Grid></Button><Button Classes="icon" ToolTip.Tip="下一首" AutomationProperties.Name="下一首" Command="{Binding NextCommand}"><PathIcon Data="M 14,4 H 16 V 16 H 14 Z M 13,10 L 4,4 V 16 Z"/></Button></StackPanel><Button Grid.Column="3" Classes="icon" ToolTip.Tip="播放队列" AutomationProperties.Name="播放队列" Command="{Binding ToggleQueueCommand}"><PathIcon Data="M 3,4 H 17 V 6 H 3 Z M 3,9 H 17 V 11 H 3 Z M 3,14 H 17 V 16 H 3 Z"/></Button><Button Grid.Column="4" Classes="icon" Content="⋯" ToolTip.Tip="更多播放操作" AutomationProperties.Name="更多播放操作：停止、播放模式、音量与睡眠定时">
+              <Button.Flyout><Flyout Placement="TopEdgeAlignedRight"><StackPanel Width="230" Spacing="9" KeyboardNavigation.TabNavigation="Cycle">
+                <Button Content="停止播放" Command="{Binding StopCommand}"/>
+                <Button Content="{Binding PlayModeText, StringFormat='播放模式：{0}'}" Command="{Binding CyclePlayModeCommand}"/>
+                <CheckBox Content="静音" IsChecked="{Binding IsMuted}" AutomationProperties.Name="播放静音"/>
+                <TextBlock Text="{Binding VolumePercent, StringFormat='音量 {0:0}%'}" FontSize="11"/>
+                <Slider Minimum="0" Maximum="100" Value="{Binding VolumePercent}" AutomationProperties.Name="播放音量"/>
+                <Button Content="试听当前片段" IsVisible="{Binding CurrentTrack.CanPreview}" Command="{Binding PreviewTrackCommand}" CommandParameter="{Binding CurrentTrack}"/>
+                <Button Content="找其他来源或版本" IsVisible="{Binding CurrentTrack.IsOnline}" Command="{Binding FindOtherVersionCommand}" CommandParameter="{Binding CurrentTrack}"/>
+                <Separator/>
+                <TextBlock Text="{Binding SleepTimer.StatusText}" FontSize="11" TextWrapping="Wrap" Foreground="{StaticResource AccentBrightBrush}"/>
+                <WrapPanel><Button Content="30 分钟后暂停" Command="{Binding StartSleepTimerCommand}" FontSize="11" Padding="7,5" Margin="0,0,6,0"><Button.CommandParameter><x:Int32>30</x:Int32></Button.CommandParameter></Button><Button Content="取消定时" Command="{Binding CancelSleepTimerCommand}" IsEnabled="{Binding SleepTimer.IsActive}" FontSize="11" Padding="7,5"/></WrapPanel>
+                <CheckBox Content="桌面歌词" IsChecked="{Binding DesktopLyricsEnabled}"/>
+              </StackPanel></Flyout></Button.Flyout>
+            </Button></Grid>
           <Grid Grid.Row="1" ColumnDefinitions="42,*,42" Margin="0,6,0,0"><TextBlock Text="{Binding CurrentTimeText}" FontSize="10" VerticalAlignment="Center"/><controls:PlaybackSeekSlider Grid.Column="1" Height="22" HorizontalAlignment="Stretch" Background="#2A4146" Minimum="0" Maximum="{Binding DurationSeconds}" Value="{Binding SeekSeconds, Mode=TwoWay}" IsEnabled="{Binding CanSeek}" SeekStarted="OnSeekStarted" SeekPreviewChanged="OnSeekPreviewChanged" SeekCompleted="OnSeekCompleted" SeekCancelled="OnSeekCancelled" ToolTip.Tip="拖动或点击调整播放位置" AutomationProperties.Name="播放进度"/><TextBlock Grid.Column="2" Text="{Binding DurationText}" HorizontalAlignment="Right" FontSize="10" VerticalAlignment="Center"/></Grid>
         </Grid>
 
-        <Grid IsVisible="{Binding IsCompactLayout, Converter={StaticResource BooleanInverseConverter}}" ColumnDefinitions="52,170,Auto,*,150,42" ColumnSpacing="8">
-          <controls:TrackCover Width="46" Height="46" CoverPath="{Binding CurrentCoverPath}" DecodeWidth="92" CoverCornerRadius="12"/>
-          <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding CurrentTitle}" FontWeight="Bold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding CurrentArtist}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding PlaybackStateText}" Foreground="#FF7F99" FontSize="10"/></StackPanel>
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="3" VerticalAlignment="Center"><controls:FavoriteButton IsChecked="{Binding CurrentTrack.IsFavorite, Mode=OneWay}" Command="{Binding ToggleFavoriteCommand}" IsEnabled="{Binding CanToggleCurrentFavorite}"/><Button Classes="icon" ToolTip.Tip="上一首" AutomationProperties.Name="上一首" Command="{Binding PreviousCommand}"><PathIcon Data="M 4,4 H 6 V 16 H 4 Z M 7,10 L 16,4 V 16 Z"/></Button><Button Classes="accent icon" Command="{Binding TogglePlayCommand}" IsEnabled="{Binding CanTogglePlay}" ToolTip.Tip="{Binding PrimaryPlayTooltip}" AutomationProperties.Name="{Binding PrimaryPlayAutomationName}"><Grid Width="20" Height="20"><PathIcon Data="M 4,2 L 18,10 L 4,18 Z" IsVisible="{Binding ShowPlayIcon}"/><PathIcon Data="M 4,2 H 8 V 18 H 4 Z M 12,2 H 16 V 18 H 12 Z" IsVisible="{Binding ShowPauseIcon}"/><ProgressBar Width="20" IsIndeterminate="True" IsVisible="{Binding ShowPlaybackBusyIcon}" VerticalAlignment="Center"/></Grid></Button><Button Classes="icon" ToolTip.Tip="下一首" AutomationProperties.Name="下一首" Command="{Binding NextCommand}"><PathIcon Data="M 14,4 H 16 V 16 H 14 Z M 13,10 L 4,4 V 16 Z"/></Button><Button Classes="icon" ToolTip.Tip="停止" AutomationProperties.Name="停止" Command="{Binding StopCommand}"><PathIcon Data="M 5,5 H 15 V 15 H 5 Z"/></Button></StackPanel>
+        <Grid IsVisible="{Binding IsWideLayout}" ColumnDefinitions="52,170,Auto,*,150,42" ColumnSpacing="8">
+          <Button Grid.ColumnSpan="2" Command="{Binding NavigateCommand}" CommandParameter="正在播放" IsEnabled="{Binding CanOpenNowPlaying}" Padding="0" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Stretch" ToolTip.Tip="打开正在播放与歌词" AutomationProperties.Name="打开正在播放"><Grid ColumnDefinitions="52,*" ColumnSpacing="8"><controls:TrackCover Width="46" Height="46" CoverPath="{Binding CurrentCoverPath}" CoverUrl="{Binding CurrentCoverUrl}" DecodeWidth="92" CoverCornerRadius="12"/><StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Text="{Binding CurrentTitle}" FontWeight="Bold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding CurrentArtist}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding PlaybackStateText}" Foreground="#FF7F99" FontSize="10"/></StackPanel></Grid></Button>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="3" VerticalAlignment="Center"><controls:FavoriteButton AutomationContext="{Binding CurrentTrack.AutomationContext}" IsChecked="{Binding CurrentTrack.IsFavorite, Mode=OneWay}" Command="{Binding ToggleFavoriteCommand}" IsEnabled="{Binding CanToggleCurrentFavorite}"/><Button Classes="icon" ToolTip.Tip="上一首" AutomationProperties.Name="上一首" Command="{Binding PreviousCommand}"><PathIcon Data="M 4,4 H 6 V 16 H 4 Z M 7,10 L 16,4 V 16 Z"/></Button><Button Classes="accent icon" Command="{Binding TogglePlayCommand}" IsEnabled="{Binding CanTogglePlay}" ToolTip.Tip="{Binding PrimaryPlayTooltip}" AutomationProperties.Name="{Binding PrimaryPlayAutomationName}"><Grid Width="20" Height="20"><PathIcon Data="M 4,2 L 18,10 L 4,18 Z" IsVisible="{Binding ShowPlayIcon}"/><PathIcon Data="M 4,2 H 8 V 18 H 4 Z M 12,2 H 16 V 18 H 12 Z" IsVisible="{Binding ShowPauseIcon}"/><ProgressBar Width="20" IsIndeterminate="True" IsVisible="{Binding ShowPlaybackBusyIcon}" VerticalAlignment="Center"/></Grid></Button><Button Classes="icon" ToolTip.Tip="下一首" AutomationProperties.Name="下一首" Command="{Binding NextCommand}"><PathIcon Data="M 14,4 H 16 V 16 H 14 Z M 13,10 L 4,4 V 16 Z"/></Button><Button Classes="icon" ToolTip.Tip="停止" AutomationProperties.Name="停止" Command="{Binding StopCommand}"><PathIcon Data="M 5,5 H 15 V 15 H 5 Z"/></Button></StackPanel>
           <Grid Grid.Column="3" RowDefinitions="Auto,Auto" VerticalAlignment="Center"><controls:PlaybackSeekSlider Height="22" HorizontalAlignment="Stretch" Background="#2A4146" Minimum="0" Maximum="{Binding DurationSeconds}" Value="{Binding SeekSeconds, Mode=TwoWay}" IsEnabled="{Binding CanSeek}" SeekStarted="OnSeekStarted" SeekPreviewChanged="OnSeekPreviewChanged" SeekCompleted="OnSeekCompleted" SeekCancelled="OnSeekCancelled" ToolTip.Tip="拖动或点击调整播放位置" AutomationProperties.Name="播放进度"/><Grid Grid.Row="1" ColumnDefinitions="*,Auto,*"><TextBlock Text="{Binding CurrentTimeText}" FontSize="10"/><Button Grid.Column="1" Content="{Binding PlayModeText}" Command="{Binding CyclePlayModeCommand}" Padding="7,1" FontSize="10"/><TextBlock Grid.Column="2" Text="{Binding DurationText}" HorizontalAlignment="Right" FontSize="10"/></Grid></Grid>
           <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center" IsVisible="{Binding ShowVolumeControls}"><CheckBox Content="静音" IsChecked="{Binding IsMuted}"/><Slider Width="78" Minimum="0" Maximum="100" Value="{Binding VolumePercent}"/></StackPanel>
           <Button Grid.Column="5" Classes="icon" ToolTip.Tip="播放队列" AutomationProperties.Name="播放队列" Command="{Binding ToggleQueueCommand}" VerticalAlignment="Center"><PathIcon Data="M 3,4 H 17 V 6 H 3 Z M 3,9 H 17 V 11 H 3 Z M 3,14 H 17 V 16 H 3 Z"/></Button>
@@ -211,17 +382,29 @@
     </Border>
 
     <Border Grid.Row="0" Margin="{Binding ShellContentMargin}" IsVisible="{Binding IsQueueVisible}" HorizontalAlignment="Right" Width="{Binding QueueDrawerWidth}" Background="#F2142227" BorderBrush="#315159" BorderThickness="1,0,0,0" Padding="14" ZIndex="20">
-      <Grid RowDefinitions="Auto,*">
-        <Grid ColumnDefinitions="*,Auto"><TextBlock Text="播放队列" FontSize="20" FontWeight="Bold"/><Button Grid.Column="1" Classes="icon" ToolTip.Tip="关闭队列" AutomationProperties.Name="关闭播放队列" Command="{Binding ToggleQueueCommand}"><PathIcon Data="M 4,5.5 L 5.5,4 L 10,8.5 L 14.5,4 L 16,5.5 L 11.5,10 L 16,14.5 L 14.5,16 L 10,11.5 L 5.5,16 L 4,14.5 L 8.5,10 Z"/></Button></Grid>
-        <ListBox Grid.Row="1" ItemsSource="{Binding QueueTracks}">
+      <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
+        <Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="播放队列" FontSize="20" FontWeight="Bold"/><TextBlock Text="{Binding QueueCount, StringFormat='共 {0} 首 · 拖动歌曲排序'}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/></StackPanel><Button Grid.Column="1" Classes="icon" ToolTip.Tip="关闭队列" AutomationProperties.Name="关闭播放队列" Command="{Binding ToggleQueueCommand}"><PathIcon Data="M 4,5.5 L 5.5,4 L 10,8.5 L 14.5,4 L 16,5.5 L 11.5,10 L 16,14.5 L 14.5,16 L 10,11.5 L 5.5,16 L 4,14.5 L 8.5,10 Z"/></Button></Grid>
+        <WrapPanel Grid.Row="1"><Button Content="定位当前" Command="{Binding LocateCurrentQueueCommand}" IsEnabled="{Binding CanOpenNowPlaying}" FontSize="11" Padding="9,5" Margin="0,0,6,0"/><Button Content="清空待播" Command="{Binding ClearPendingQueueCommand}" IsEnabled="{Binding CanEditQueue}" ToolTip.Tip="保留当前歌曲，清空其余队列项" FontSize="11" Padding="9,5"/></WrapPanel>
+        <ListBox x:Name="QueueList" Grid.Row="2" ItemsSource="{Binding QueueTracks}" IsEnabled="{Binding CanEditQueue}" PointerPressed="OnQueuePointerPressed" PointerMoved="OnQueuePointerMoved" PointerReleased="OnQueuePointerReleased" AutomationProperties.Name="播放队列歌曲列表">
           <ListBox.ItemTemplate><DataTemplate x:DataType="vm:QueueItemViewModel">
-            <Border Classes.queueCurrent="{Binding IsCurrent}" CornerRadius="10" Padding="6" Margin="0,2">
-              <Grid ColumnDefinitions="34,40,*,40,Auto" ColumnSpacing="6">
-                <TextBlock Text="{Binding DisplayIndex}" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                <controls:TrackCover Grid.Column="1" Width="36" Height="36" CoverPath="{Binding Track.CoverCachePath}" DecodeWidth="72" CoverCornerRadius="10"/>
-                <StackPanel Grid.Column="2" VerticalAlignment="Center"><TextBlock Text="{Binding Track.Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Track.Artist}" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/></StackPanel>
-                <controls:FavoriteButton Grid.Column="3" Width="36" Height="36" IsChecked="{Binding Track.IsFavorite, Mode=OneWay}" Command="{ReflectionBinding $parent[Window].DataContext.ToggleFavoriteCommand}" CommandParameter="{Binding Track}"/>
-                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="2"><Button Classes="icon" ToolTip.Tip="立即播放" AutomationProperties.Name="{Binding PlayAutomationName}" Command="{ReflectionBinding $parent[Window].DataContext.PlayQueueItemCommand}" CommandParameter="{Binding}"><PathIcon Data="M 5,3 L 17,10 L 5,17 Z"/></Button><Button Classes="icon" ToolTip.Tip="添加到歌单" AutomationProperties.Name="添加到歌单" Command="{ReflectionBinding $parent[Window].DataContext.OpenPlaylistPickerCommand}" CommandParameter="{Binding Track}"><PathIcon Data="M 3,3 H 12 V 5 H 3 Z M 3,7 H 12 V 9 H 3 Z M 14,10 H 16 V 13 H 19 V 15 H 16 V 18 H 14 V 15 H 11 V 13 H 14 Z"/></Button><Button Classes="icon" ToolTip.Tip="从队列移除" AutomationProperties.Name="从队列移除" Command="{ReflectionBinding $parent[Window].DataContext.RemoveQueueItemCommand}" CommandParameter="{Binding}"><PathIcon Data="M 4,9 H 16 V 11 H 4 Z"/></Button></StackPanel>
+            <Border Classes.queueCurrent="{Binding IsCurrent}" CornerRadius="10" Padding="6" Margin="0,2" ToolTip.Tip="{Binding Track, Converter={StaticResource TrackDetailsConverter}}">
+              <Grid ColumnDefinitions="24,40,*,36" RowDefinitions="Auto,Auto" ColumnSpacing="6" RowSpacing="5">
+                <StackPanel VerticalAlignment="Center"><TextBlock Text="{Binding DisplayIndex}" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/><TextBlock Text="▶" IsVisible="{Binding IsCurrent}" Foreground="{StaticResource AccentBrightBrush}" FontSize="10" HorizontalAlignment="Center"/></StackPanel>
+                <controls:TrackCover Grid.Column="1" Width="36" Height="36" CoverPath="{Binding Track.CoverCachePath}" CoverUrl="{Binding Track.CoverUrl}" DecodeWidth="72" CoverCornerRadius="10"/>
+                <StackPanel Grid.Column="2" VerticalAlignment="Center"><TextBlock Text="{Binding Track.Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Track.Artist}" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Track.SourceVersionText}" Foreground="{StaticResource AccentBrightBrush}" FontSize="11" TextTrimming="CharacterEllipsis"/></StackPanel>
+                <controls:FavoriteButton Grid.Column="3" Width="36" Height="36" AutomationContext="{Binding Track.AutomationContext}" IsChecked="{Binding Track.IsFavorite, Mode=OneWay}" Command="{ReflectionBinding #ShellWindow.DataContext.ToggleFavoriteCommand}" CommandParameter="{Binding Track}"/>
+                <Grid Grid.Row="1" Grid.ColumnSpan="4" ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                  <TextBlock Text="{Binding Track.AvailabilityText}" Foreground="{StaticResource WarningBrush}" FontSize="10" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="3">
+                    <Button Width="30" Height="34" Content="↑" Padding="0" ToolTip.Tip="上移队列项" AutomationProperties.Name="{Binding Track, Converter={StaticResource TrackActionNameConverter}, ConverterParameter=上移队列项}" Command="{ReflectionBinding #ShellWindow.DataContext.MoveQueueUpCommand}" CommandParameter="{Binding}"/>
+                    <Button Width="30" Height="34" Content="↓" Padding="0" ToolTip.Tip="下移队列项" AutomationProperties.Name="{Binding Track, Converter={StaticResource TrackActionNameConverter}, ConverterParameter=下移队列项}" Command="{ReflectionBinding #ShellWindow.DataContext.MoveQueueDownCommand}" CommandParameter="{Binding}"/>
+                    <Button Width="34" Height="34" Classes="icon" IsEnabled="{Binding Track.CanAttemptPlayback}" ToolTip.Tip="播放此队列项" AutomationProperties.Name="{Binding PlayAutomationName}" Command="{ReflectionBinding #ShellWindow.DataContext.PlayQueueItemCommand}" CommandParameter="{Binding}"><PathIcon Data="M 5,3 L 17,10 L 5,17 Z"/></Button>
+                    <Button Width="40" Height="34" Content="试听" Padding="2" FontSize="10" IsVisible="{Binding Track.CanPreview}" Command="{ReflectionBinding #ShellWindow.DataContext.PreviewTrackCommand}" CommandParameter="{Binding Track}" AutomationProperties.Name="{Binding Track, Converter={StaticResource TrackActionNameConverter}, ConverterParameter=试听片段}"/>
+                    <Button Width="34" Height="34" Content="⋯" Padding="2" FontSize="20" AutomationProperties.Name="{Binding Track, Converter={StaticResource TrackActionNameConverter}, ConverterParameter=队列歌曲更多操作}">
+                      <Button.Flyout><MenuFlyout><MenuItem Header="添加到歌单" Command="{ReflectionBinding #ShellWindow.DataContext.OpenPlaylistPickerCommand}" CommandParameter="{Binding Track}"/><MenuItem Header="找其他来源或版本" IsVisible="{Binding Track.IsOnline}" Command="{ReflectionBinding #ShellWindow.DataContext.FindOtherVersionCommand}" CommandParameter="{Binding Track}"/><Separator/><MenuItem Header="移除此队列项" Command="{ReflectionBinding #ShellWindow.DataContext.RemoveQueueItemCommand}" CommandParameter="{Binding}"/></MenuFlyout></Button.Flyout>
+                    </Button>
+                  </StackPanel>
+                </Grid>
               </Grid>
             </Border>
           </DataTemplate></ListBox.ItemTemplate>
@@ -229,36 +412,36 @@
       </Grid>
     </Border>
 
-    <Border Grid.RowSpan="2" IsVisible="{Binding IsTrackPickerVisible}" Background="#B010171B" ZIndex="50">
-      <Border Width="760" MaxWidth="760" MaxHeight="620" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" CornerRadius="18" Padding="18" HorizontalAlignment="Center" VerticalAlignment="Center">
+    <Border x:Name="TrackPickerLayer" KeyboardNavigation.TabNavigation="Cycle" Grid.RowSpan="2" IsVisible="{Binding IsTrackPickerVisible}" Background="#B010171B" ZIndex="50">
+      <Border Width="760" MaxWidth="760" MaxHeight="520" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" CornerRadius="18" Padding="18" HorizontalAlignment="Center" VerticalAlignment="Center">
         <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
           <Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="添加歌曲" FontSize="22" FontWeight="Bold"/><TextBlock Text="{Binding TrackPickerTargetName, StringFormat='目标歌单：{0}'}" Foreground="{StaticResource AccentBrightBrush}"/></StackPanel><Button Grid.Column="1" Classes="icon" ToolTip.Tip="关闭" AutomationProperties.Name="关闭歌曲选择器" Command="{Binding CancelTrackPickerCommand}"><PathIcon Data="M 4,5.5 L 5.5,4 L 10,8.5 L 14.5,4 L 16,5.5 L 11.5,10 L 16,14.5 L 14.5,16 L 10,11.5 L 5.5,16 L 4,14.5 L 8.5,10 Z"/></Button></Grid>
-          <TextBox Grid.Row="1" Text="{Binding PlaylistTrackSearchText, UpdateSourceTrigger=PropertyChanged}" Watermark="搜索本地歌曲" AutomationProperties.Name="歌单歌曲搜索"/>
-          <ListBox Grid.Row="2" ItemsSource="{Binding VisibleTrackPickerItems}"><ListBox.ItemTemplate><DataTemplate x:DataType="vm:TrackPickerItemViewModel"><Border Padding="7" CornerRadius="10"><Grid ColumnDefinitions="Auto,44,*,40,Auto" ColumnSpacing="10"><CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" IsEnabled="{Binding CanSelect}" AutomationProperties.Name="选择歌曲" VerticalAlignment="Center"/><controls:TrackCover Grid.Column="1" Width="40" Height="40" CoverPath="{Binding Track.CoverCachePath}" DecodeWidth="80" CoverCornerRadius="11"/><StackPanel Grid.Column="2"><TextBlock Text="{Binding Track.Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Track.Artist}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Track.Album}" Foreground="{StaticResource TextDisabledBrush}" FontSize="10" TextTrimming="CharacterEllipsis"/></StackPanel><controls:FavoriteButton Grid.Column="3" Width="36" Height="36" IsChecked="{Binding Track.IsFavorite, Mode=OneWay}" Command="{ReflectionBinding $parent[Window].DataContext.ToggleFavoriteCommand}" CommandParameter="{Binding Track}"/><StackPanel Grid.Column="4" VerticalAlignment="Center"><TextBlock Text="{Binding Track.Duration, Converter={StaticResource DurationConverter}}"/><TextBlock Text="已添加" IsVisible="{Binding IsAlreadyAdded}" Foreground="{StaticResource AccentBrightBrush}"/></StackPanel></Grid></Border></DataTemplate></ListBox.ItemTemplate></ListBox>
+          <TextBox Grid.Row="1" Text="{Binding PlaylistTrackSearchText, UpdateSourceTrigger=PropertyChanged}" Watermark="搜索本地歌曲" AutomationProperties.Name="歌单歌曲搜索" x:Name="TrackPickerSearchBox"/>
+          <ListBox Grid.Row="2" ItemsSource="{Binding VisibleTrackPickerItems}"><ListBox.ItemTemplate><DataTemplate x:DataType="vm:TrackPickerItemViewModel"><Border Padding="7" CornerRadius="10"><Grid ColumnDefinitions="Auto,44,*,40,Auto" ColumnSpacing="10"><CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" IsEnabled="{Binding CanSelect}" AutomationProperties.Name="选择歌曲" VerticalAlignment="Center"/><controls:TrackCover Grid.Column="1" Width="40" Height="40" CoverPath="{Binding Track.CoverCachePath}" CoverUrl="{Binding Track.CoverUrl}" DecodeWidth="80" CoverCornerRadius="11"/><StackPanel Grid.Column="2"><TextBlock Text="{Binding Track.Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Track.Artist}" Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Track.Album}" Foreground="{StaticResource TextDisabledBrush}" FontSize="10" TextTrimming="CharacterEllipsis"/></StackPanel><controls:FavoriteButton Grid.Column="3" Width="36" Height="36" AutomationContext="{Binding Track.AutomationContext}" IsChecked="{Binding Track.IsFavorite, Mode=OneWay}" Command="{ReflectionBinding $parent[Window].DataContext.ToggleFavoriteCommand}" CommandParameter="{Binding Track}"/><StackPanel Grid.Column="4" VerticalAlignment="Center"><TextBlock Text="{Binding Track.Duration, Converter={StaticResource DurationConverter}}"/><TextBlock Text="已添加" IsVisible="{Binding IsAlreadyAdded}" Foreground="{StaticResource AccentBrightBrush}"/></StackPanel></Grid></Border></DataTemplate></ListBox.ItemTemplate></ListBox>
           <Grid Grid.Row="3" ColumnDefinitions="*,Auto"><TextBlock Text="{Binding SelectedTrackPickerCount, StringFormat='已选择 {0} 首'}" VerticalAlignment="Center"/><StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"><Button Content="取消" Command="{Binding CancelTrackPickerCommand}"/><Button Classes="accent" Content="添加到歌单" Command="{Binding ConfirmTrackPickerCommand}" IsEnabled="{Binding CanConfirmTrackPicker}"/></StackPanel></Grid>
         </Grid>
       </Border>
     </Border>
 
-    <Border Grid.RowSpan="2" IsVisible="{Binding IsPlaylistPickerVisible}" Background="#B010171B" ZIndex="51">
+    <Border x:Name="PlaylistPickerLayer" KeyboardNavigation.TabNavigation="Cycle" Grid.RowSpan="2" IsVisible="{Binding IsPlaylistPickerVisible}" Background="#B010171B" ZIndex="51">
       <Border Width="560" MaxHeight="580" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" CornerRadius="18" Padding="18" HorizontalAlignment="Center" VerticalAlignment="Center">
         <Grid RowDefinitions="Auto,*,Auto,Auto" RowSpacing="10">
           <Grid ColumnDefinitions="*,Auto"><StackPanel><TextBlock Text="添加到歌单" FontSize="22" FontWeight="Bold"/><TextBlock Text="可以选择一个或多个目标歌单" Foreground="{StaticResource TextSecondaryBrush}"/></StackPanel><Button Grid.Column="1" Classes="icon" ToolTip.Tip="关闭" AutomationProperties.Name="关闭歌单选择器" Command="{Binding CancelPlaylistPickerCommand}"><PathIcon Data="M 4,5.5 L 5.5,4 L 10,8.5 L 14.5,4 L 16,5.5 L 11.5,10 L 16,14.5 L 14.5,16 L 10,11.5 L 5.5,16 L 4,14.5 L 8.5,10 Z"/></Button></Grid>
           <ListBox Grid.Row="1" ItemsSource="{Binding PlaylistChoices}" IsVisible="{Binding HasPlaylistChoices}"><ListBox.ItemTemplate><DataTemplate x:DataType="vm:PlaylistChoiceViewModel"><Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Margin="4"><CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}" AutomationProperties.Name="选择歌单"/><TextBlock Grid.Column="1" Text="{Binding Playlist.Name}" FontWeight="SemiBold"/><TextBlock Grid.Column="2" Text="已包含所选歌曲" IsVisible="{Binding AlreadyContainsAll}" Foreground="{StaticResource AccentBrightBrush}"/></Grid></DataTemplate></ListBox.ItemTemplate></ListBox>
           <Border Grid.Row="1" IsVisible="{Binding HasPlaylistChoices, Converter={StaticResource BooleanInverseConverter}}" Background="{StaticResource CardBrush}" CornerRadius="12" Padding="18"><TextBlock Text="还没有歌单，可以在下方新建后继续添加。" TextWrapping="Wrap" HorizontalAlignment="Center"/></Border>
-          <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="8"><TextBox Text="{Binding PlaylistPickerNewName}" Watermark="新歌单名称"/><Button Grid.Column="1" Content="新建歌单" Command="{Binding CreatePlaylistFromPickerCommand}"/></Grid>
+          <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="8"><TextBox Text="{Binding PlaylistPickerNewName}" Watermark="新歌单名称" AutomationProperties.Name="新歌单名称" x:Name="PlaylistPickerNameBox"/><Button Grid.Column="1" Content="新建歌单" Command="{Binding CreatePlaylistFromPickerCommand}"/></Grid>
           <Grid Grid.Row="3" ColumnDefinitions="*,Auto"><TextBlock Text="{Binding SelectedPlaylistChoiceCount, StringFormat='已选择 {0} 个歌单'}" VerticalAlignment="Center"/><StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"><Button Content="取消" Command="{Binding CancelPlaylistPickerCommand}"/><Button Classes="accent" Content="确认添加" Command="{Binding ConfirmPlaylistPickerCommand}" IsEnabled="{Binding CanConfirmPlaylistPicker}"/></StackPanel></Grid>
         </Grid>
       </Border>
     </Border>
 
-    <Border Grid.RowSpan="2" IsVisible="{Binding LibraryRemovalConfirmationVisible}" Background="#B010171B" ZIndex="52">
+    <Border x:Name="LibraryRemovalDialog" KeyboardNavigation.TabNavigation="Cycle" Grid.RowSpan="2" IsVisible="{Binding LibraryRemovalConfirmationVisible}" Background="#B010171B" ZIndex="52">
       <Border Width="520" Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource ErrorBrush}" BorderThickness="1" CornerRadius="18" Padding="20" HorizontalAlignment="Center" VerticalAlignment="Center">
         <StackPanel Spacing="14"><TextBlock Text="从音乐库移除" FontSize="22" FontWeight="Bold"/><TextBlock Text="{Binding LibraryRemovalConfirmationText}" TextWrapping="Wrap"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8"><Button Content="取消" Command="{Binding CancelLibraryRemovalCommand}" IsDefault="True" IsCancel="True"/><Button Content="从音乐库移除" Foreground="{StaticResource ErrorBrush}" Command="{Binding ConfirmLibraryRemovalCommand}" IsEnabled="{Binding IsLibraryRemovalInProgress, Converter={StaticResource BooleanInverseConverter}}"/></StackPanel></StackPanel>
       </Border>
     </Border>
 
-    <Border Grid.Row="0" IsVisible="{Binding IsSnackbarVisible}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="12" MaxWidth="520" Background="{Binding SnackbarTone, Converter={StaticResource SnackbarBrushConverter}}" CornerRadius="12" Padding="14,10" ZIndex="40">
+    <Border Grid.Row="0" IsVisible="{Binding IsSnackbarVisible}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="12" MaxWidth="520" Background="{Binding SnackbarTone, Converter={StaticResource SnackbarBrushConverter}}" CornerRadius="12" Padding="14,10" ZIndex="40" AutomationProperties.LiveSetting="Polite">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10"><TextBlock Text="{Binding SnackbarMessage}" TextWrapping="Wrap" VerticalAlignment="Center"/><Button Grid.Column="1" Content="撤销" Command="{Binding UndoSnackbarCommand}" IsVisible="{Binding SnackbarCanUndo}"/></Grid>
     </Border>
   </Grid>

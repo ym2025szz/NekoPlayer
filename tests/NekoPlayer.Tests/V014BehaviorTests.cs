@@ -167,12 +167,32 @@ public sealed class LibraryRemovalPersistenceTests
     [Fact] public async Task RemovalKeepsFileHashAndTimestamp() { await using var h = await V014Harness.CreateAsync(); var t = await h.AddTrackAsync(createFile: true); var beforeHash = SHA256.HashData(await File.ReadAllBytesAsync(t.FilePath)); var beforeTime = File.GetLastWriteTimeUtc(t.FilePath); await h.Library.RemoveFromLibraryAsync([t.Id]); Assert.Equal(beforeHash, SHA256.HashData(await File.ReadAllBytesAsync(t.FilePath))); Assert.Equal(beforeTime, File.GetLastWriteTimeUtc(t.FilePath)); }
     [Fact] public async Task RemovalKeepsUnselectedPlaylistRelation() { await using var h = await V014Harness.CreateAsync(); var a = await h.AddTrackAsync(); var b = await h.AddTrackAsync(); var p = await h.AddPlaylistAsync(); await h.Playlists.AddTracksAsync(p.Id, [a.Id, b.Id]); await h.Library.RemoveFromLibraryAsync([a.Id]); Assert.Equal(b.Id, Assert.Single(await h.Playlists.GetTracksAsync(p.Id)).Id); }
     [Fact] public async Task ResultContainsExactRemovedIds() { await using var h = await V014Harness.CreateAsync(); var t = await h.AddTrackAsync(); var r = await h.Library.RemoveFromLibraryAsync([t.Id, Guid.NewGuid()]); Assert.Equal([t.Id], r.RemovedTrackIds); }
+
+    [Fact]
+    public async Task RemovingFromPlaylistAndDeletingPlaylistPreserveUserAudio()
+    {
+        await using var h = await V014Harness.CreateAsync();
+        var track = await h.AddTrackAsync(createFile: true);
+        var beforeBytes = await File.ReadAllBytesAsync(track.FilePath);
+        var beforeTimestamp = File.GetLastWriteTimeUtc(track.FilePath);
+        var first = await h.AddPlaylistAsync();
+        var second = await h.AddPlaylistAsync();
+        await h.Playlists.AddTrackAsync(first.Id, track.Id);
+        await h.Playlists.AddTrackAsync(second.Id, track.Id);
+        await h.Playlists.RemoveTrackAsync(first.Id, track.Id);
+        Assert.Empty(await h.Playlists.GetTracksAsync(first.Id));
+        Assert.Equal(beforeBytes, await File.ReadAllBytesAsync(track.FilePath));
+        await h.Playlists.DeleteAsync(second.Id);
+        Assert.Equal(beforeBytes, await File.ReadAllBytesAsync(track.FilePath));
+        Assert.Equal(beforeTimestamp, File.GetLastWriteTimeUtc(track.FilePath));
+        Assert.Equal(track.Id, Assert.Single(await h.Library.GetTracksAsync()).Id);
+    }
 }
 
 public sealed class V014SourceContractTests
 {
     private static readonly string Root = FindRoot();
-    private static string Read(string relative) => File.ReadAllText(Path.Combine(Root, relative.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar)));
+    private static string Read(string relative) => File.ReadAllText(Path.Combine(Root, relative));
 
     [Fact] public void SeekControlUsesHandledEventsToo() => Assert.Contains("handledEventsToo: true", Read(@"src\NekoPlayer.App\Controls\PlaybackSeekSlider.cs"));
     [Fact] public void SeekControlOwnsFullHitSurface() => Assert.Contains("DrawRectangle(Brushes.Transparent", Read(@"src\NekoPlayer.App\Controls\PlaybackSeekSlider.cs"));
@@ -184,11 +204,40 @@ public sealed class V014SourceContractTests
     [Fact] public void BothPlaybackLayoutsUseSameSeekControl() => Assert.Equal(2, Count(Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"), "controls:PlaybackSeekSlider"));
     [Fact] public void OldOuterPointerHandlersAreGone() => Assert.DoesNotContain("OnSeekPointerReleased", Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"));
     [Fact] public void NavigationButtonStretches() => Assert.Contains("HorizontalAlignment\" Value=\"Stretch", Read(@"src\NekoPlayer.App\App.axaml"));
-    [Fact] public void NavigationContentUsesUnifiedClass() => Assert.Equal(7, Count(Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"), "Classes=\"navContent\""));
+    [Fact]
+    public void NavigationContentUsesUnifiedClass()
+    {
+        var document = XamlSurfaceContracts.Window;
+        var buttons = document.Descendants(XamlSurfaceContracts.Avalonia + "Button")
+            .Where(x => ((string?)x.Attribute("Classes"))?.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("nav") is true).ToArray();
+        Assert.NotEmpty(buttons);
+        foreach (var button in buttons)
+        {
+            Assert.NotNull(button.Attribute("Command"));
+            var content = Assert.Single(button.Elements(XamlSurfaceContracts.Avalonia + "Grid"));
+            Assert.Contains("navContent", ((string?)content.Attribute("Classes"))?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? []);
+            Assert.Single(content.Elements(XamlSurfaceContracts.Controls + "OutlineIcon"));
+            var label = Assert.Single(content.Elements(XamlSurfaceContracts.Avalonia + "TextBlock"));
+            Assert.Equal("{Binding ShowNavigationText}", (string?)label.Attribute("IsVisible"));
+        }
+        var labels = buttons.SelectMany(x => x.Descendants(XamlSurfaceContracts.Avalonia + "TextBlock")).Select(x => (string?)x.Attribute("Text")).ToArray();
+        foreach (var required in new[] { "首页", "本地音乐", "正在播放", "在线搜索", "最近播放", "喜欢的歌曲", "我的歌单", "设置" })
+            Assert.Contains(required, labels);
+    }
     [Fact] public void TrackPickerExists() => Assert.Contains("IsTrackPickerVisible", Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"));
     [Fact] public void PlaylistPickerExists() => Assert.Contains("IsPlaylistPickerVisible", Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"));
     [Fact] public void RemovalWarningMentionsDiskFiles() => Assert.Contains("不会删除磁盘上的音频文件", Read(@"src\NekoPlayer.App\ViewModels\MainWindowViewModel.cs"));
-    [Fact] public void ProductionSourceNeverCallsFileDelete() => Assert.DoesNotContain("File.Delete", string.Join('\n', Directory.GetFiles(Path.Combine(Root, "src"), "*.cs", SearchOption.AllDirectories).Select(File.ReadAllText)));
+    [Fact]
+    public void LibraryAndPlaylistRemovalNeverDeleteUserFiles()
+    {
+        // These repositories own user music records and relationships, never disk audio.
+        // Application-owned cache, temporary files and upgrade backups have separate cleanup lifetimes.
+        foreach (var source in new[] { @"src\NekoPlayer.Infrastructure\Repositories\MusicLibraryService.cs", @"src\NekoPlayer.Infrastructure\Repositories\PlaylistService.cs" })
+        {
+            Assert.DoesNotContain("File.Delete", Read(source));
+            Assert.DoesNotContain("Directory.Delete", Read(source));
+        }
+    }
     [Fact] public void CreatorTextIsExact() => Assert.Contains("创作者：梦怀殇", Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"));
     [Fact] public void GreetingIsVisibleOnHome() => Assert.Contains("GreetingText", Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"));
     [Fact] public void QueueDisplaysOneBasedIndex() => Assert.Contains("DisplayIndex", Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"));

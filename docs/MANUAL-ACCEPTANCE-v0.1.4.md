@@ -2,7 +2,7 @@
 
 启动程序：
 
-`<publish-directory>\win-x64\NekoPlayer.exe`
+`<项目目录>\artifacts\publish\win-x64\NekoPlayer.exe`
 
 ## A. 真实鼠标进度条
 

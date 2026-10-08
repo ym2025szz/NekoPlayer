@@ -11,6 +11,9 @@ namespace NekoPlayer.App.Controls;
 
 public sealed class FavoriteButton : ToggleButton
 {
+    public static readonly StyledProperty<string?> AutomationContextProperty =
+        AvaloniaProperty.Register<FavoriteButton, string?>(nameof(AutomationContext));
+    public string? AutomationContext { get => GetValue(AutomationContextProperty); set => SetValue(AutomationContextProperty, value); }
     public const string UncheckedColor = "#8FAEB2";
     public const string CheckedColor = "#FF5D7D";
     public const string OutlineGeometryData = "M 10,17.4 C 8.1,16 3.3,12.6 3.3,8.5 C 3.3,5.6 5.2,3.7 7.6,3.7 C 9,3.7 10,4.7 10,4.7 C 10,4.7 11,3.7 12.4,3.7 C 14.8,3.7 16.7,5.6 16.7,8.5 C 16.7,12.6 11.9,16 10,17.4 Z";
@@ -37,7 +40,7 @@ public sealed class FavoriteButton : ToggleButton
         Height = 40;
         MinWidth = 36;
         MinHeight = 36;
-        Padding = new Thickness(8);
+        Padding = new Thickness(0);
         CornerRadius = new CornerRadius(12);
         HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center;
         VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Center;
@@ -63,14 +66,14 @@ public sealed class FavoriteButton : ToggleButton
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
         };
 
-        Content = new Grid { Children = { _outlinePath, _filledPath } };
+        Content = new Grid { Width = 22, Height = 22, Children = { _outlinePath, _filledPath } };
         UpdateVisualState();
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == IsCheckedProperty || change.Property == IsEnabledProperty)
+        if (change.Property == IsCheckedProperty || change.Property == IsEnabledProperty || change.Property == AutomationContextProperty)
             UpdateVisualState();
     }
 
@@ -123,6 +126,6 @@ public sealed class FavoriteButton : ToggleButton
 
         var accessibleText = favorite ? RemoveTooltip : AddTooltip;
         ToolTip.SetTip(this, accessibleText);
-        AutomationProperties.SetName(this, accessibleText);
+        AutomationProperties.SetName(this, string.IsNullOrWhiteSpace(AutomationContext) ? accessibleText : $"{accessibleText}，{AutomationContext}");
     }
 }

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Xml.Linq;
 using Avalonia;
 using Microsoft.EntityFrameworkCore;
 using NekoPlayer.App.Controls;
@@ -202,18 +203,98 @@ public sealed class FavoriteVisualContractTests
     [Fact] public void CheckedUsesFilledPath() => Assert.Contains("_filledPath.Fill = foreground", ButtonSource);
     [Fact] public void UncheckedTooltipIsExact() => Assert.Equal("添加到喜欢", FavoriteButton.AddTooltip);
     [Fact] public void CheckedTooltipIsExact() => Assert.Equal("取消喜欢", FavoriteButton.RemoveTooltip);
-    [Fact] public void AutomationNameTracksState() => Assert.Contains("AutomationProperties.SetName(this, accessibleText)", ButtonSource);
+    [Fact]
+    public void AutomationNameTracksState()
+    {
+        // Preserve the action's favorite-state wording while allowing song/source context.
+        // This source contract does not require creating a dispatcher-bound control in xUnit workers.
+        Assert.Contains("var accessibleText = favorite ? RemoveTooltip : AddTooltip", ButtonSource);
+        Assert.Contains("ToolTip.SetTip(this, accessibleText)", ButtonSource);
+        Assert.Contains("AutomationProperties.SetName(this,", ButtonSource);
+        Assert.Contains("string.IsNullOrWhiteSpace(AutomationContext) ? accessibleText", ButtonSource);
+        Assert.Contains("{accessibleText}，{AutomationContext}", ButtonSource);
+        Assert.Contains("change.Property == IsCheckedProperty", ButtonSource);
+        Assert.Contains("change.Property == AutomationContextProperty", ButtonSource);
+    }
     [Fact] public void FormalControlDoesNotUseUnicodeHearts() { Assert.DoesNotContain("♡", ButtonSource); Assert.DoesNotContain("♥", ButtonSource); }
     [Fact] public void HoverKeepsDistinctColors() { Assert.Contains("#C4D7D9", ButtonSource); Assert.Contains("#FF7892", ButtonSource); }
     [Fact] public void CheckedStateHasLightPinkBackground() => Assert.Contains("#22FF5D7D", ButtonSource);
     [Fact] public void DisabledStatePreservesVisibleState() => Assert.Contains("!IsEnabled ? 0.58", ButtonSource);
     [Fact] public void HitTargetIsAtLeastThirtySixPixels() { Assert.Contains("MinWidth = 36", ButtonSource); Assert.Contains("MinHeight = 36", ButtonSource); }
-    [Fact] public void AllFavoriteEntriesUseUnifiedControl() => Assert.Equal(9, SourceContracts.Count(WindowSource, "controls:FavoriteButton"));
-    [Fact] public void FavoriteBindingsAreOneWayFromPersistedModel() => Assert.Equal(9, SourceContracts.Count(WindowSource, "IsFavorite, Mode=OneWay"));
-    [Fact] public void CurrentTrackFavoriteButtonsDisableWithoutTrack() => Assert.Equal(3, SourceContracts.Count(WindowSource, "<controls:FavoriteButton IsChecked=\"{Binding CurrentTrack.IsFavorite, Mode=OneWay}\" Command=\"{Binding ToggleFavoriteCommand}\" IsEnabled=\"{Binding CanToggleCurrentFavorite}\""));
-    [Fact] public void FavoriteControlCoversQueue() => Assert.Contains("<controls:FavoriteButton Grid.Column=\"3\" Width=\"36\" Height=\"36\" IsChecked=\"{Binding Track.IsFavorite, Mode=OneWay}\"", WindowSource);
-    [Fact] public void FavoriteControlCoversPlaylistDetail() => Assert.Contains("ToggleFavoriteCommand", SourceContracts.LineContaining(WindowSource, "RemoveSelectedFromPlaylistCommand"));
-    [Fact] public void FavoriteControlCoversTrackPicker() => Assert.Contains("Track.IsFavorite, Mode=OneWay", SourceContracts.LineContaining(WindowSource, "VisibleTrackPickerItems"));
+    [Fact]
+    public void AllFavoriteEntriesUseUnifiedControl()
+    {
+        foreach (var surface in XamlSurfaceContracts.TrackSurfaces().Concat(XamlSurfaceContracts.CurrentTrackSurfaces()))
+        {
+            var favorite = Assert.Single(surface.Descendants(XamlSurfaceContracts.Controls + "FavoriteButton"));
+            Assert.Contains("FavoriteCommand", (string?)favorite.Attribute("Command") ?? string.Empty);
+            var favoriteAction = Assert.Single(surface.Descendants().Where(element => ((string?)element.Attribute("Command"))?.Contains("FavoriteCommand", StringComparison.Ordinal) is true));
+            Assert.Same(favorite, favoriteAction);
+            Assert.NotNull(favorite.Attribute("AutomationContext"));
+        }
+    }
+
+    [Fact]
+    public void FavoriteBindingsAreOneWayFromPersistedModel()
+    {
+        var controls = XamlSurfaceContracts.Window.Descendants(XamlSurfaceContracts.Controls + "FavoriteButton")
+            .Concat(XamlSurfaceContracts.Search.Descendants(XamlSurfaceContracts.Controls + "FavoriteButton")).ToArray();
+        Assert.NotEmpty(controls);
+        Assert.All(controls, control => Assert.EndsWith("IsFavorite, Mode=OneWay}", (string?)control.Attribute("IsChecked") ?? string.Empty));
+    }
+
+    [Fact]
+    public void CurrentTrackFavoriteButtonsDisableWithoutTrack()
+    {
+        foreach (var surface in XamlSurfaceContracts.CurrentTrackSurfaces())
+        {
+            var button = Assert.Single(surface.Descendants(XamlSurfaceContracts.Controls + "FavoriteButton"));
+            Assert.Equal("{Binding CurrentTrack.IsFavorite, Mode=OneWay}", (string?)button.Attribute("IsChecked"));
+            Assert.Equal("{Binding CanToggleCurrentFavorite}", (string?)button.Attribute("IsEnabled"));
+            Assert.Equal("{Binding ToggleFavoriteCommand}", (string?)button.Attribute("Command"));
+        }
+        Assert.Contains("CanToggleCurrentFavorite => CurrentTrack is not null && !_favoriteOperationInProgress", SourceContracts.Read(@"src\NekoPlayer.App\ViewModels\MainWindowViewModel.cs"));
+    }
+
+    [Fact]
+    public void NowPlayingHasOneFavoriteActionInEachLayoutVariant()
+    {
+        var variants = XamlSurfaceContracts.NowPlayingSurfaces().ToArray();
+        Assert.Equal(2, variants.Length);
+        Assert.All(variants, variant =>
+        {
+            var button = Assert.Single(variant.Descendants(XamlSurfaceContracts.Controls + "FavoriteButton"));
+            Assert.Equal("{Binding CurrentTrack.IsFavorite, Mode=OneWay}", (string?)button.Attribute("IsChecked"));
+            Assert.Equal("{Binding CanToggleCurrentFavorite}", (string?)button.Attribute("IsEnabled"));
+            Assert.Equal("{Binding ToggleFavoriteCommand}", (string?)button.Attribute("Command"));
+            Assert.Equal("{Binding CurrentTrack.AutomationContext}", (string?)button.Attribute("AutomationContext"));
+        });
+    }
+
+    [Fact]
+    public void FavoriteControlCoversQueue()
+    {
+        var button = Assert.Single(XamlSurfaceContracts.TrackTemplate("QueueTracks").Descendants(XamlSurfaceContracts.Controls + "FavoriteButton"));
+        Assert.Equal("{Binding Track.IsFavorite, Mode=OneWay}", (string?)button.Attribute("IsChecked"));
+        Assert.Equal("{Binding Track}", (string?)button.Attribute("CommandParameter"));
+    }
+
+    [Fact]
+    public void FavoriteControlCoversPlaylistDetail()
+    {
+        var template = XamlSurfaceContracts.TrackTemplate("VisiblePlaylistTracks");
+        var button = Assert.Single(template.Descendants(XamlSurfaceContracts.Controls + "FavoriteButton"));
+        Assert.Contains("ToggleFavoriteCommand", (string?)button.Attribute("Command") ?? string.Empty);
+        Assert.Contains(template.Descendants(), element => ((string?)element.Attribute("Command"))?.Contains("RemoveSelectedFromPlaylistCommand", StringComparison.Ordinal) is true);
+    }
+
+    [Fact]
+    public void FavoriteControlCoversTrackPicker()
+    {
+        var button = Assert.Single(XamlSurfaceContracts.TrackTemplate("VisibleTrackPickerItems").Descendants(XamlSurfaceContracts.Controls + "FavoriteButton"));
+        Assert.Equal("{Binding Track.IsFavorite, Mode=OneWay}", (string?)button.Attribute("IsChecked"));
+        Assert.Equal("{Binding Track}", (string?)button.Attribute("CommandParameter"));
+    }
     [Fact] public void OldFavoriteConvertersAreRemoved() { Assert.DoesNotContain("FavoriteVisualConverter", WindowSource); Assert.DoesNotContain("FavoriteGlyphConverter", SourceContracts.Read(@"src\NekoPlayer.App\App.axaml")); }
 }
 
@@ -257,7 +338,22 @@ public sealed class FavoritePersistenceV100Tests
 
 public sealed class V100SourceContractTests
 {
-    [Fact] public void TrackCoverControlIsUsedEverywhereCoversRender() => Assert.Equal(9, SourceContracts.Count(SourceContracts.Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"), "controls:TrackCover"));
+    [Fact]
+    public void TrackCoverControlIsUsedEverywhereCoversRender()
+    {
+        foreach (var surface in XamlSurfaceContracts.TrackSurfaces())
+        {
+            var cover = Assert.Single(surface.Descendants(XamlSurfaceContracts.Controls + "TrackCover"));
+            Assert.Contains("CoverCachePath}", (string?)cover.Attribute("CoverPath") ?? string.Empty);
+            Assert.Contains("CoverUrl}", (string?)cover.Attribute("CoverUrl") ?? string.Empty);
+        }
+        foreach (var surface in XamlSurfaceContracts.CurrentTrackSurfaces())
+        {
+            var cover = Assert.Single(surface.Descendants(XamlSurfaceContracts.Controls + "TrackCover"));
+            Assert.Equal("{Binding CurrentCoverPath}", (string?)cover.Attribute("CoverPath"));
+            Assert.Equal("{Binding CurrentCoverUrl}", (string?)cover.Attribute("CoverUrl"));
+        }
+    }
     [Fact] public void OldSynchronousCoverConverterIsRemoved() { Assert.DoesNotContain("CoverPathConverter", SourceContracts.Read(@"src\NekoPlayer.App\Converters\UiConverters.cs")); Assert.DoesNotContain("CoverConverter", SourceContracts.Read(@"src\NekoPlayer.App\Views\MainWindow.axaml")); }
     [Fact] public void RealCoverDecodeRunsOffUiThread() => Assert.Contains("Task.Run", SourceContracts.Read(@"src\NekoPlayer.App\Controls\TrackCoverProvider.cs"));
     [Fact] public void ImageResultReturnsThroughUiDispatcher() => Assert.Contains("Dispatcher.UIThread.InvokeAsync", SourceContracts.Read(@"src\NekoPlayer.App\Controls\TrackCover.axaml.cs"));
@@ -266,31 +362,89 @@ public sealed class V100SourceContractTests
     [Fact] public void DefaultUsesUniformStretch() => Assert.Contains("result.IsDefault ? Stretch.Uniform", SourceContracts.Read(@"src\NekoPlayer.App\Controls\TrackCover.axaml.cs"));
     [Fact] public void MissingAndDamagedCoversAreLogged() { var text = SourceContracts.Read(@"src\NekoPlayer.App\Controls\TrackCoverProvider.cs"); Assert.Contains("歌曲封面缓存不存在", text); Assert.Contains("读取或解码失败", text); }
     [Fact] public void AppIconIsAnAvaloniaResource() => Assert.Contains("<AvaloniaResource Include=\"Assets\\**\"", SourceContracts.Read(@"src\NekoPlayer.App\NekoPlayer.App.csproj"));
-    [Fact] public void VersionIsOnePointZero() => Assert.Contains("<Version>1.0.0</Version>", SourceContracts.Read(@"src\NekoPlayer.App\NekoPlayer.App.csproj"));
-    [Fact] public void PackageVersionIsOnePointZero() => Assert.Contains("<PackageVersion>1.0.0</PackageVersion>", SourceContracts.Read(@"src\NekoPlayer.App\NekoPlayer.App.csproj"));
-    [Fact] public void AssemblyVersionIsOnePointZero() => Assert.Contains("<AssemblyVersion>1.0.0.0</AssemblyVersion>", SourceContracts.Read(@"src\NekoPlayer.App\NekoPlayer.App.csproj"));
-    [Fact] public void FileVersionIsOnePointZero() => Assert.Contains("<FileVersion>1.0.0.0</FileVersion>", SourceContracts.Read(@"src\NekoPlayer.App\NekoPlayer.App.csproj"));
-    [Fact] public void InformationalVersionIsOnePointZero() => Assert.Contains("<InformationalVersion>1.0.0</InformationalVersion>", SourceContracts.Read(@"src\NekoPlayer.App\NekoPlayer.App.csproj"));
-    [Fact] public void ProductVersionDoesNotAppendCommitSha() => Assert.Contains("<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>", SourceContracts.Read(@"src\NekoPlayer.App\NekoPlayer.App.csproj"));
+    [Fact] public void VersionIsCurrentRelease() => Assert.Equal("1.2.0", NekoPlayer.App.AppVersionInfo.Version);
+    [Fact] public void PackageVersionUsesProjectVersion() => Assert.Contains("<PackageVersion>$(Version)</PackageVersion>", SourceContracts.Read(@"src\NekoPlayer.App\NekoPlayer.App.csproj"));
+    [Fact] public void AssemblyVersionUsesProjectVersion() => Assert.Equal(NekoPlayer.App.AppVersionInfo.Version + ".0", typeof(NekoPlayer.App.AppVersionInfo).Assembly.GetName().Version?.ToString());
+    [Fact] public void FileVersionUsesProjectVersion() => Assert.Equal(NekoPlayer.App.AppVersionInfo.Version + ".0", System.Diagnostics.FileVersionInfo.GetVersionInfo(typeof(NekoPlayer.App.AppVersionInfo).Assembly.Location).FileVersion);
+    [Fact] public void InformationalVersionUsesProjectVersion() => Assert.Equal(NekoPlayer.App.AppVersionInfo.Version, System.Diagnostics.FileVersionInfo.GetVersionInfo(typeof(NekoPlayer.App.AppVersionInfo).Assembly.Location).ProductVersion?.Split('+')[0]);
     [Fact] public void LeftFooterHasNoReleaseSubtitle() { var text = SourceContracts.Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"); Assert.DoesNotContain("响应式交互版", text); Assert.DoesNotContain("播放控制与曲库操作修复版", text); }
     [Fact] public void SettingsShowsOnlyDisplayVersion() { var text = SourceContracts.Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"); Assert.DoesNotContain("应用版本：", text); Assert.Contains("StringFormat='v{0}'", text); }
     [Fact] public void CreatorRemainsExact() => Assert.Contains("创作者：梦怀殇", SourceContracts.Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"));
     [Fact] public void ViewModelUsesCentralVersionConstant() => Assert.Contains("AppVersionInfo.Version", SourceContracts.Read(@"src\NekoPlayer.App\ViewModels\MainWindowViewModel.cs"));
-    [Fact] public void PublishScriptExpectsOnePointZero() { var text = SourceContracts.Read("publish-win-x64.ps1"); Assert.Contains("$version = '1.0.0'", text); Assert.Contains("'1.0.0.0'", text); }
-    [Fact] public void ReadmeDeclaresOnePointZero() => Assert.Contains("v1.0.0", SourceContracts.Read("README.md"));
+    [Fact] public void PublishScriptReadsProjectVersion() { var text = SourceContracts.Read("publish-win-x64.ps1"); Assert.Contains("$projectXml.Project.PropertyGroup.Version", text); Assert.Contains("$fileVersion = \"$version.0\"", text); }
+    [Fact] public void ReadmeDeclaresCurrentVersion() => Assert.Contains(NekoPlayer.App.AppVersionInfo.DisplayVersion, SourceContracts.Read("README.md"));
     [Fact] public void HistoricalAcceptanceDocumentStillExists() => Assert.True(File.Exists(Path.Combine(SourceContracts.Root, "docs", "MANUAL-ACCEPTANCE-v0.1.4.md")));
-    [Fact] public void NewAcceptanceDocumentExists() => Assert.True(File.Exists(Path.Combine(SourceContracts.Root, "docs", "MANUAL-ACCEPTANCE-v1.0.0.md")));
+    [Fact] public void NewAcceptanceDocumentExists() => Assert.True(File.Exists(Path.Combine(SourceContracts.Root, "docs", $"MANUAL-ACCEPTANCE-{NekoPlayer.App.AppVersionInfo.DisplayVersion}.md")));
     [Fact] public void GuiValidationCanUseExplicitIsolatedDataRoot() { var text = SourceContracts.Read(@"src\NekoPlayer.Infrastructure\Configuration\UserDataPaths.cs"); Assert.Contains("NEKOPLAYER_DATA_ROOT", text); Assert.Contains("Path.GetFullPath(overrideRoot)", text); }
 }
 
 internal static class SourceContracts
 {
     public static string Root { get; } = FindRoot();
-    public static string Read(string relative) => File.ReadAllText(Path.Combine(Root, Normalize(relative)));
+    public static string Read(string relative) => File.ReadAllText(Path.Combine(Root, relative));
     public static int Count(string text, string value) => (text.Length - text.Replace(value, string.Empty).Length) / value.Length;
     public static string LineContaining(string text, string value) => text.Split('\n').Single(line => line.Contains(value, StringComparison.Ordinal));
-    private static string Normalize(string relative) => relative.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
     private static string FindRoot() { for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent) if (File.Exists(Path.Combine(d.FullName, "NekoPlayer.sln"))) return d.FullName; throw new DirectoryNotFoundException(); }
+}
+
+internal static class XamlSurfaceContracts
+{
+    public static readonly XNamespace Avalonia = "https://github.com/avaloniaui";
+    public static readonly XNamespace Controls = "using:NekoPlayer.App.Controls";
+    private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+    public static XDocument Window => XDocument.Parse(SourceContracts.Read(@"src\NekoPlayer.App\Views\MainWindow.axaml"));
+    public static XDocument Search => XDocument.Parse(SourceContracts.Read(@"src\NekoPlayer.App\Views\OnlineSearchView.axaml"));
+
+    public static XElement TrackTemplate(string source, XDocument? document = null)
+    {
+        document ??= Window;
+        var list = document.Descendants(Avalonia + "ListBox").Single(x => (string?)x.Attribute("ItemsSource") == $"{{Binding {source}}}");
+        if (list.Attribute("ItemTemplate") is { } resource) return SharedTemplate(document, resource.Value);
+        var template = list.Elements(Avalonia + "ListBox.ItemTemplate").Single().Elements(Avalonia + "DataTemplate").Single();
+        var projection = template.Descendants(Avalonia + "ContentControl").SingleOrDefault(x => x.Attribute("ContentTemplate") is not null);
+        if (projection is null) return template;
+        // RecentTrack must project its actual Track into the common Track template.
+        Assert.Equal("{Binding Track}", (string?)projection.Attribute("Content"));
+        return SharedTemplate(document, projection.Attribute("ContentTemplate")!.Value);
+    }
+
+    public static IEnumerable<XElement> TrackSurfaces()
+    {
+        foreach (var source in new[] { "Tracks", "Favorites", "RecentTracks", "VisiblePlaylistTracks", "QueueTracks", "VisibleTrackPickerItems" })
+            yield return TrackTemplate(source);
+        yield return TrackTemplate("SelectedGroup.Tracks", Search);
+    }
+
+    public static IEnumerable<XElement> CurrentTrackSurfaces()
+    {
+        var document = Window;
+        foreach (var surface in NowPlayingSurfaces(document)) yield return surface;
+        foreach (var visibility in new[] { "{Binding IsWideLayout}", "{Binding IsWideLayout, Converter={StaticResource BooleanInverseConverter}}" })
+            yield return document.Descendants().Single(x => (string?)x.Attribute("IsVisible") == visibility);
+    }
+
+    public static IEnumerable<XElement> NowPlayingSurfaces(XDocument? document = null)
+    {
+        document ??= Window;
+        var page = document.Descendants(Avalonia + "Grid").Single(element => (string?)element.Attribute("IsVisible") == "{Binding IsNowPlayingPage}");
+        var variants = page.Elements(Avalonia + "Grid").ToArray();
+        Assert.Equal(2, variants.Length);
+        Assert.Equal(new[]
+        {
+            "{Binding IsCompactLayout, Converter={StaticResource BooleanInverseConverter}}",
+            "{Binding IsCompactLayout}"
+        }, variants.Select(variant => (string?)variant.Attribute("IsVisible")));
+        return variants;
+    }
+
+    private static XElement SharedTemplate(XDocument document, string resource)
+    {
+        const string prefix = "{StaticResource ";
+        Assert.StartsWith(prefix, resource);
+        Assert.EndsWith("}", resource);
+        var key = resource[prefix.Length..^1].Trim();
+        return document.Descendants(Avalonia + "DataTemplate").Single(x => (string?)x.Attribute(Xaml + "Key") == key);
+    }
 }
 
 internal static class AvaloniaTestRuntime

@@ -17,15 +17,15 @@ using NekoPlayer.Infrastructure.Configuration;
 using NekoPlayer.Infrastructure.Data;
 using NekoPlayer.Infrastructure.Metadata;
 using NekoPlayer.Infrastructure.Repositories;
+using NekoPlayer.Infrastructure.Online;
+using NekoPlayer.App.Services;
 using Serilog;
 
 namespace NekoPlayer.App;
 
 public partial class App : Application
 {
-    public const string GuiSmokeCloseDelayEnvironmentVariable = "NEKOPLAYER_GUI_SMOKE_CLOSE_MS";
     private IHost? _host;
-    private DispatcherTimer? _guiSmokeCloseTimer;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -51,38 +51,53 @@ public partial class App : Application
                 services.AddSingleton<ITrackStateStore, TrackStateStore>();
                 services.AddSingleton<IClock, SystemClock>();
                 services.AddSingleton<IMusicLibraryService, MusicLibraryService>();
+                services.AddSingleton<ITrackCatalog, OnlineTrackCatalog>();
+                services.AddSingleton<IGatewayRuntime, GatewayRuntime>();
+                services.AddSingleton<WindowsAccountVault>();
+                services.AddSingleton<IProviderAccountService, ProviderAccountService>();
+                services.AddSingleton<IOnlineMusicService, OnlineMusicService>();
                 services.AddSingleton<IPlaylistService, PlaylistService>();
                 services.AddSingleton<ILyricsService, LrcParser>();
                 services.AddSingleton<IPlaybackQueueService, PlaybackQueueService>();
                 services.AddSingleton<ISpectrumService, SpectrumService>();
-                services.AddSingleton<IAudioPlayerService>(provider => AudioPlayerFactory.Create(
-                    provider.GetRequiredService<IFfmpegLocator>(),
-                    provider.GetRequiredService<ISpectrumService>()));
+                services.AddSingleton<IAudioPlayerService, FfmpegAudioPlayerService>();
+                services.AddSingleton<PlaybackCoordinator>();
+                services.AddSingleton<LyricsPresentationService>();
+                services.AddSingleton<IDesktopLyricsService, DesktopLyricsService>();
+                services.AddSingleton<WindowsMediaControlsService>();
+                services.AddSingleton<SleepTimerService>(sp => new SleepTimerService(sp.GetRequiredService<PlaybackCoordinator>().PauseAsync));
+                services.AddSingleton<PlayerLifetimeService>();
+                services.AddSingleton<OnlineSearchViewModel>();
+                services.AddSingleton<ProviderAccountsViewModel>();
                 services.AddSingleton<MainWindowViewModel>();
             }).Build();
 
             var locator = _host.Services.GetRequiredService<IFfmpegLocator>();
             locator.Configure();
-            desktop.MainWindow = new MainWindow { DataContext = _host.Services.GetRequiredService<MainWindowViewModel>() };
-            ScheduleGuiSmokeClose(desktop);
-            desktop.Exit += (_, _) => { Log.Information("猫娘播放器退出"); _host.Dispose(); Log.CloseAndFlush(); };
+            var viewModel = _host.Services.GetRequiredService<MainWindowViewModel>();
+            var lifetime = _host.Services.GetRequiredService<PlayerLifetimeService>();
+            var media = _host.Services.GetRequiredService<WindowsMediaControlsService>();
+            var window = new MainWindow { DataContext = viewModel, Lifetime = lifetime, MediaControls = media };
+            desktop.MainWindow = window;
+            lifetime.Configure(this, desktop, window, () => viewModel.CloseToTray,
+                viewModel.TogglePlayCommand, viewModel.PreviousCommand, viewModel.NextCommand,
+                () => viewModel.ToggleDesktopLyricsCommand.Execute(null), () => viewModel.UnlockDesktopLyricsCommand.Execute(null),
+                () => viewModel.DesktopLyricsEnabled);
+            desktop.Exit += (_, _) =>
+            {
+                Log.Information("猫娘播放器退出");
+                try
+                {
+                    if (_host is IAsyncDisposable asyncHost) asyncHost.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    else _host.Dispose();
+                }
+                catch (Exception ex) { Log.Warning(ex, "应用退出时宿主清理失败"); }
+                finally { Log.CloseAndFlush(); }
+            };
             Dispatcher.UIThread.UnhandledException += (_, e) => { Log.Fatal(e.Exception, "UI 线程未处理异常"); e.Handled = true; };
             TaskScheduler.UnobservedTaskException += (_, e) => { Log.Error(e.Exception, "后台任务未观察异常"); e.SetObserved(); };
         }
         base.OnFrameworkInitializationCompleted();
-    }
-
-    private void ScheduleGuiSmokeClose(IClassicDesktopStyleApplicationLifetime desktop)
-    {
-        var rawDelay = Environment.GetEnvironmentVariable(GuiSmokeCloseDelayEnvironmentVariable);
-        if (!int.TryParse(rawDelay, out var delayMilliseconds) || delayMilliseconds is < 100 or > 30000) return;
-        _guiSmokeCloseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(delayMilliseconds) };
-        _guiSmokeCloseTimer.Tick += (_, _) =>
-        {
-            _guiSmokeCloseTimer?.Stop();
-            desktop.MainWindow?.Close();
-        };
-        _guiSmokeCloseTimer.Start();
     }
 
     private static void DisableAvaloniaDataAnnotationValidation()

@@ -1,8 +1,8 @@
 # 猫娘播放器 v1.0.0 人工验收
 
-Windows 验收启动路径：`<publish-directory>\win-x64\NekoPlayer.exe`
+最终启动路径：
 
-Linux 验收启动路径：`<publish-directory>/linux-x64/NekoPlayer`
+`<项目目录>\artifacts\publish\win-x64\NekoPlayer.exe`
 
 验收前请正常关闭其他 NekoPlayer 实例。以下操作只验证界面和现有功能；“从音乐库移除”不会删除磁盘音频文件，但仍请认真确认目标歌曲呀。
 
@@ -51,17 +51,6 @@ Linux 验收启动路径：`<publish-directory>/linux-x64/NekoPlayer`
 7. 点击左侧导航行右侧空白区域，确认仍能切换页面。
 8. 搜索并切换排序，确认封面和收藏视觉不丢失。
 9. 正常关闭程序，确认没有异常对话框或卡死。
-
-## E. Linux 桌面回归
-
-1. 确认 `ffmpeg` 与 `ffprobe` 可从 `PATH` 启动，并确认 FFmpeg 提供 ALSA 输出。
-2. 在临时 HOME/XDG 目录启动应用，确认数据库、设置、缓存和日志没有写入发布目录。
-3. 导入路径中包含中文和空格的临时音频，重复导入后不创建重复 Track。
-4. 完成播放、暂停、恢复、播放态 Seek、暂停态 Seek、Stop、Stop 后重播和快速切歌。
-5. 运行 `install-linux.sh`，确认桌面入口可以处理带空格的安装路径。
-6. 运行 `uninstall-linux.sh`，确认程序被移除，但用户数据库和设置保留。
-7. 关闭后确认没有 NekoPlayer、ffmpeg 或 ffprobe 残留进程。
-8. 自动化 null 音频输出只验证技术管线；真实设备是否可听、是否有杂音仍需人工试听。
 
 ## 问题反馈模板
 

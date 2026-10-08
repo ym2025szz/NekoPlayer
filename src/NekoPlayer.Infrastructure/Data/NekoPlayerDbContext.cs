@@ -16,8 +16,14 @@ public sealed class NekoPlayerDbContext(DbContextOptions<NekoPlayerDbContext> op
         modelBuilder.Entity<Track>(entity =>
         {
             entity.HasKey(x => x.Id);
-            entity.HasIndex(x => x.FilePath).IsUnique();
+            entity.HasIndex(x => x.FilePath).IsUnique().HasFilter("\"SourceKind\" = 0");
+            entity.HasIndex(x => new { x.ProviderId, x.ProviderTrackId }).IsUnique()
+                .HasFilter("\"SourceKind\" = 1");
             entity.Property(x => x.FilePath).UseCollation("NOCASE");
+            entity.Property(x => x.ProviderId).UseCollation("NOCASE");
+            entity.Property(x => x.SourceKind).HasDefaultValue(TrackSourceKind.Local);
+            entity.Property(x => x.ProviderMetadataJson).HasDefaultValue("{}");
+            entity.Property(x => x.VersionLabel).HasDefaultValue(string.Empty);
             entity.Property(x => x.Duration).HasConversion(x => x.Ticks, x => TimeSpan.FromTicks(x));
         });
 

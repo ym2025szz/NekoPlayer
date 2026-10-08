@@ -1,0 +1,60 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:services="using:NekoPlayer.App.Services"
+             xmlns:controls="using:NekoPlayer.App.Controls"
+             x:Class="NekoPlayer.App.Controls.LyricsViewport"
+             x:DataType="services:LyricsPresentationService"
+             Focusable="False" ClipToBounds="True">
+  <Grid x:Name="LayoutRoot">
+    <ListBox x:Name="LyricsList" Background="Transparent" BorderThickness="0"
+             Padding="0" Focusable="False" AutoScrollToSelectedItem="False"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+             ScrollViewer.VerticalScrollBarVisibility="Auto"
+             AutomationProperties.Name="歌曲歌词，双击一句跳转播放位置">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate><VirtualizingStackPanel CacheLength="1"/></ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+      <ListBox.Styles>
+        <Style Selector="ListBoxItem">
+          <Setter Property="Focusable" Value="False"/>
+          <Setter Property="Padding" Value="0"/>
+          <Setter Property="Margin" Value="0"/>
+          <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+          <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected">
+          <Setter Property="Background" Value="Transparent"/>
+        </Style>
+      </ListBox.Styles>
+      <ListBox.DataTemplates>
+        <DataTemplate DataType="services:LyricsPresentationRow" x:DataType="services:LyricsPresentationRow">
+          <Border Padding="16,12" MinHeight="52" Background="Transparent">
+            <TextBlock Text="{Binding Text}" Foreground="{Binding Foreground}"
+                       FontWeight="{Binding FontWeight}" FontSize="17"
+                       TextAlignment="Center" HorizontalAlignment="Stretch"
+                       VerticalAlignment="Center" TextWrapping="Wrap"/>
+          </Border>
+        </DataTemplate>
+        <DataTemplate DataType="controls:LyricsViewportSpacer" x:DataType="controls:LyricsViewportSpacer">
+          <Border Height="{Binding Height}" IsHitTestVisible="False"/>
+        </DataTemplate>
+      </ListBox.DataTemplates>
+    </ListBox>
+    <StackPanel x:Name="StatePanel" HorizontalAlignment="Center" VerticalAlignment="Center"
+                Spacing="14" Margin="24">
+      <ProgressBar IsIndeterminate="True" Width="100" Height="3" IsVisible="{Binding IsLoading}"/>
+      <TextBlock Text="{Binding StatusText}" Foreground="#A8C1C4" FontSize="15"
+                 TextAlignment="Center" TextWrapping="Wrap"/>
+      <Button Content="重试读取歌词" Command="{Binding RetryCommand}"
+              IsVisible="{Binding CanRetry}" HorizontalAlignment="Center"/>
+    </StackPanel>
+    <Border x:Name="RetainedErrorPanel" IsVisible="False" Background="#E6162328"
+            Padding="10" VerticalAlignment="Bottom" CornerRadius="8">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <TextBlock Text="{Binding StatusText}" Foreground="#A8C1C4" FontSize="12"
+                   TextWrapping="Wrap" VerticalAlignment="Center"/>
+        <Button Grid.Column="1" Content="重试" Command="{Binding RetryCommand}"/>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

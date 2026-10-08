@@ -13,8 +13,10 @@ public interface IPlaybackQueueService
     void Restore(IEnumerable<Track> tracks, int currentIndex);
     void Add(Track track);
     void PlayNext(Track track);
+    void Move(Guid trackId, int targetIndex);
     void Remove(Guid trackId);
     void Clear();
+    void ClearPending();
     void ClearCurrent();
     Track? SetCurrent(Guid trackId);
     Track? MoveNext(bool playbackCompleted = false);

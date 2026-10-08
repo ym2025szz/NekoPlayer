@@ -1,0 +1,68 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="NekoPlayer.App.Views.DesktopLyricsWindow"
+        x:CompileBindings="False"
+        Title="猫娘播放器 · 桌面歌词"
+        Width="720" Height="144" MinWidth="120" MinHeight="80"
+        SystemDecorations="None" CanResize="False" ShowInTaskbar="False"
+        Topmost="True" ShowActivated="False" WindowStartupLocation="Manual"
+        TransparencyLevelHint="Transparent" Background="Transparent">
+  <Window.Styles>
+    <Style Selector="Button.subtitleTool">
+      <Setter Property="Height" Value="28"/>
+      <Setter Property="MinWidth" Value="28"/>
+      <Setter Property="Padding" Value="6,2"/>
+      <Setter Property="CornerRadius" Value="5"/>
+      <Setter Property="Background" Value="#263439"/>
+      <Setter Property="Foreground" Value="#F1FBFB"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Focusable" Value="False"/>
+      <Setter Property="Transitions"><Transitions/></Setter>
+    </Style>
+    <Style Selector="TextBlock.subtitle">
+      <Setter Property="FontFamily" Value="Microsoft YaHei UI, Inter"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="TextAlignment" Value="Center"/>
+      <Setter Property="TextWrapping" Value="NoWrap"/>
+      <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+      <Setter Property="MaxLines" Value="1"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="IsHitTestVisible" Value="False"/>
+      <Setter Property="Effect">
+        <DropShadowEffect Color="Black" BlurRadius="4" OffsetX="1" OffsetY="2" Opacity="1"/>
+      </Setter>
+    </Style>
+  </Window.Styles>
+  <Grid x:Name="SubtitleRoot" Background="Transparent"
+        PointerEntered="OnPointerEntered" PointerExited="OnPointerExited">
+    <Grid RowDefinitions="38,*,*" Margin="8,0,8,8">
+      <Border x:Name="Toolbar" Grid.Row="0" IsVisible="False" Background="#EE101A1F"
+              CornerRadius="7" HorizontalAlignment="Center" Padding="5,3">
+        <Viewbox Stretch="Uniform" StretchDirection="DownOnly">
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <Border Background="Transparent" Padding="6,0" Cursor="SizeAll" PointerPressed="OnDragPressed"
+                  ToolTip.Tip="拖动桌面歌词">
+            <TextBlock Text="⠿" Foreground="#C5D9DC" VerticalAlignment="Center"/>
+          </Border>
+          <Button Classes="subtitleTool" Content="A−" Click="OnSmallerClick" ToolTip.Tip="缩小字号（最低 22）"/>
+          <TextBlock x:Name="FontSizeLabel" FontSize="12" Foreground="#C5D9DC" VerticalAlignment="Center"/>
+          <Button Classes="subtitleTool" Content="A+" Click="OnLargerClick" ToolTip.Tip="增大字号（最高 48）"/>
+          <Button Classes="subtitleTool" Content="−" Click="OnLessOpaqueClick" ToolTip.Tip="降低不透明度（最低 60%）"/>
+          <TextBlock x:Name="OpacityLabel" FontSize="12" Foreground="#C5D9DC" VerticalAlignment="Center"/>
+          <Button Classes="subtitleTool" Content="+" Click="OnMoreOpaqueClick" ToolTip.Tip="提高不透明度"/>
+          <Button Classes="subtitleTool" Content="锁定" Click="OnLockClick" ToolTip.Tip="锁定并穿透鼠标；从托盘解锁"/>
+          <Button Classes="subtitleTool" Content="×" Click="OnHideClick" ToolTip.Tip="隐藏桌面歌词"/>
+        </StackPanel>
+        </Viewbox>
+      </Border>
+      <TextBlock x:Name="CurrentLyric" Grid.Row="1" Classes="subtitle" FontSize="28" Foreground="#5EE8DE"/>
+      <TextBlock x:Name="NextLyric" Grid.Row="2" Classes="subtitle" FontSize="22" Foreground="#E4F1F3"/>
+    </Grid>
+    <Border x:Name="ResizeHandle" IsVisible="False" Width="24" Height="24" Background="#88101A1F"
+            CornerRadius="4" HorizontalAlignment="Right" VerticalAlignment="Bottom" Cursor="SizeWestEast"
+            ToolTip.Tip="拖动调整宽度" PointerPressed="OnResizePressed" PointerMoved="OnResizeMoved"
+            PointerReleased="OnResizeReleased" PointerCaptureLost="OnResizeCaptureLost">
+      <TextBlock Text="↔" Foreground="#C5D9DC" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Border>
+  </Grid>
+</Window>

@@ -3,11 +3,11 @@
     "ReleaseUrl":  "https://github.com/BtbN/FFmpeg-Builds/releases/tag/latest",
     "AssetName":  "ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip",
     "AssetUrl":  "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip",
-    "DownloadedAtUtc":  "2026-08-04T03:55:54.4129054Z",
-    "Sha256":  "9e8e04021c8d563642c526da28c76184786cf98b44d5fc499566ecf8a8ec1c0d",
-    "UpstreamDigest":  "sha256:9e8e04021c8d563642c526da28c76184786cf98b44d5fc499566ecf8a8ec1c0d",
+    "DownloadedAtUtc":  "2026-08-03T13:38:09.8505454Z",
+    "Sha256":  "05da9f6658efc6604cb20d3fa21db3fd768e73f8f7e48c7a63c9872be3099782",
+    "UpstreamDigest":  "sha256:05da9f6658efc6604cb20d3fa21db3fd768e73f8f7e48c7a63c9872be3099782",
     "UpstreamDigestVerified":  true,
-    "FfmpegVersion":  "ffmpeg version n8.1.2-34-g9b6c8969e0-20260803 Copyright (c) 2000-2026 the FFmpeg developers",
-    "FfprobeVersion":  "ffprobe version n8.1.2-34-g9b6c8969e0-20260803 Copyright (c) 2007-2026 the FFmpeg developers",
+    "FfmpegVersion":  "ffmpeg version n8.1.2-34-g9b6c8969e0-20260802 Copyright (c) 2000-2026 the FFmpeg developers",
+    "FfprobeVersion":  "ffprobe version n8.1.2-34-g9b6c8969e0-20260802 Copyright (c) 2007-2026 the FFmpeg developers",
     "LicenseVariant":  "LGPL Shared"
 }

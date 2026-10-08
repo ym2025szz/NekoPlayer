@@ -2,7 +2,7 @@
 
 启动路径：
 
-`<publish-directory>\win-x64\NekoPlayer.exe`
+`<项目目录>\artifacts\publish\win-x64\NekoPlayer.exe`
 
 本轮自动测试和性能验证使用独立临时 SQLite。以下收藏、最近播放和清空操作会修改正式用户数据库，请先确认当前数据适合人工验收；“取消喜欢”不会删除音乐文件，“移除/清空最近播放”只删除播放历史。
 

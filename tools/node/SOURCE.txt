@@ -1,0 +1,10 @@
+Node.js v24.21.0 for Windows x64
+Official source: https://nodejs.org/
+Archive: https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip
+Official checksums: https://nodejs.org/dist/v24.21.0/SHASUMS256.txt
+Archive SHA-256: 158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541
+node.exe SHA-256: ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32
+LICENSE SHA-256: ed34dd8e3f0a78dbaf00d0444ce8e285b015b765379c2e17880455f70370f8e9
+SHA-256 matches the pinned digest and the official HTTPS checksum list.
+This installation does not claim verification of the checksum list's signing key.
+LICENSE is the complete, unmodified file from the official ZIP, including bundled dependency notices.

@@ -1,0 +1,23 @@
+{
+  "retrievedAt": "2026-10-08",
+  "homepage": "https://www.kuwo.cn/",
+  "redistributesOriginalScripts": false,
+  "implementation": "Independent adapter of public visitor request behavior; no account authentication or privileged media route",
+  "sources": [
+    {
+      "url": "https://h5s.kuwo.cn/www/kw-www/da5648d.js",
+      "sha256": "6f449da5656dc5707b96361309400789b686c09b33d1473f8fd9a7f9ea5d822a",
+      "purpose": "Guest Cookie / Secret signing behavior"
+    },
+    {
+      "url": "https://h5s.kuwo.cn/www/kw-www/efee0d2.js",
+      "sha256": "b43da2a04cfe1ecaf36c1d6395fdb6771b760ab05db04512cca13e7daa94edd5",
+      "purpose": "Current public search request and response field names"
+    },
+    {
+      "url": "https://h5s.kuwo.cn/www/kw-www/e6d8d6d.js",
+      "sha256": "e4e5ca31492dcc8886dd981c3ea8bd04b108b115f3fc986a10e58f31a692d4bb",
+      "purpose": "Current public lyrics route and listening permission checks"
+    }
+  ]
+}

@@ -7,32 +7,22 @@ namespace NekoPlayer.Infrastructure.Configuration;
 
 public sealed class FfmpegLocator : IFfmpegLocator
 {
-    public const string BinaryDirectoryOverrideEnvironmentVariable = "NEKOPLAYER_FFMPEG_DIR";
-
-    private static readonly string[] RequiredWindowsSharedLibraries =
+    private static readonly string[] RequiredSharedLibraries =
         ["avcodec-*.dll", "avformat-*.dll", "avutil-*.dll", "swresample-*.dll"];
-
     private readonly IUserDataPaths _paths;
-    private readonly bool _isWindows;
     private volatile bool _processValidated;
 
     public FfmpegLocator(IUserDataPaths paths)
-        : this(paths, OperatingSystem.IsWindows(), Environment.GetEnvironmentVariable(BinaryDirectoryOverrideEnvironmentVariable), Environment.GetEnvironmentVariable("PATH"))
-    {
-    }
-
-    public FfmpegLocator(IUserDataPaths paths, bool isWindows, string? overrideDirectory, string? pathEnvironment)
     {
         _paths = paths;
-        _isWindows = isWindows;
-        BinaryDirectory = FindBinaryDirectory(isWindows, overrideDirectory, pathEnvironment);
-        HasSharedLibraries = CheckPlatformLibraries(BinaryDirectory, isWindows);
+        BinaryDirectory = FindBinaryDirectory();
+        HasSharedLibraries = CheckSharedLibraries(BinaryDirectory);
         StatusMessage = BuildFileStatus();
     }
 
     public string BinaryDirectory { get; }
-    public string FfmpegPath => Path.Combine(BinaryDirectory, GetExecutableNames(_isWindows).Ffmpeg);
-    public string FfprobePath => Path.Combine(BinaryDirectory, GetExecutableNames(_isWindows).Ffprobe);
+    public string FfmpegPath => Path.Combine(BinaryDirectory, "ffmpeg.exe");
+    public string FfprobePath => Path.Combine(BinaryDirectory, "ffprobe.exe");
     public bool HasSharedLibraries { get; private set; }
     public string Version { get; private set; } = "未检测";
     public string StatusMessage { get; private set; }
@@ -41,12 +31,10 @@ public sealed class FfmpegLocator : IFfmpegLocator
     public void Configure()
     {
         Directory.CreateDirectory(_paths.TempDirectory);
-        HasSharedLibraries = CheckPlatformLibraries(BinaryDirectory, _isWindows);
+        HasSharedLibraries = CheckSharedLibraries(BinaryDirectory);
         if (!FilesAreComplete())
         {
-            StatusMessage = _isWindows
-                ? "FFmpeg 文件不完整，请运行 setup-ffmpeg.ps1。"
-                : "未找到系统 FFmpeg/ffprobe，请按 Linux 文档安装 ffmpeg。";
+            StatusMessage = "FFmpeg 文件不完整，请重新运行 setup-ffmpeg.ps1。";
             Log.Warning("FFmpeg runtime is incomplete: {BinaryDirectory}", BinaryDirectory);
             return;
         }
@@ -61,14 +49,12 @@ public sealed class FfmpegLocator : IFfmpegLocator
 
     public async Task<FfmpegValidationResult> ValidateAsync(CancellationToken cancellationToken = default)
     {
-        HasSharedLibraries = CheckPlatformLibraries(BinaryDirectory, _isWindows);
+        HasSharedLibraries = CheckSharedLibraries(BinaryDirectory);
         if (!FilesAreComplete())
         {
             _processValidated = false;
             Version = "不可用";
-            StatusMessage = _isWindows
-                ? "FFmpeg 文件不完整，请运行 setup-ffmpeg.ps1。"
-                : "未找到系统 FFmpeg/ffprobe，请按 Linux 文档安装 ffmpeg。";
+            StatusMessage = "FFmpeg 文件不完整，请重新运行 setup-ffmpeg.ps1。";
             return Snapshot();
         }
 
@@ -80,47 +66,17 @@ public sealed class FfmpegLocator : IFfmpegLocator
                 throw new InvalidOperationException("FFmpeg version output was not recognized.");
             Version = firstLine;
             _processValidated = true;
-            StatusMessage = _isWindows ? "FFmpeg 可用（随包 Shared 运行时）" : "FFmpeg 可用（Linux 系统运行时）";
+            StatusMessage = "FFmpeg 可用";
             Log.Information("FFmpeg validation succeeded: {Version}", Version);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             _processValidated = false;
             Version = "启动失败";
-            StatusMessage = "FFmpeg 无法启动，请检查安装和执行权限。";
+            StatusMessage = "FFmpeg 文件不完整或无法启动，请重新运行 setup-ffmpeg.ps1。";
             Log.Error(ex, "FFmpeg validation failed: {BinaryDirectory}", BinaryDirectory);
         }
         return Snapshot();
-    }
-
-    public static (string Ffmpeg, string Ffprobe) GetExecutableNames(bool isWindows) =>
-        isWindows ? ("ffmpeg.exe", "ffprobe.exe") : ("ffmpeg", "ffprobe");
-
-    public static string FindBinaryDirectory(bool isWindows, string? overrideDirectory, string? pathEnvironment)
-    {
-        if (!string.IsNullOrWhiteSpace(overrideDirectory))
-        {
-            var full = Path.GetFullPath(overrideDirectory);
-            if (HasRequiredFiles(full, isWindows)) return full;
-        }
-
-        var published = Path.Combine(AppContext.BaseDirectory, "ffmpeg");
-        if (HasRequiredFiles(published, isWindows)) return published;
-
-        if (isWindows)
-        {
-            var directory = new DirectoryInfo(AppContext.BaseDirectory);
-            for (var i = 0; i < 7 && directory is not null; i++, directory = directory.Parent)
-            {
-                var candidate = Path.Combine(directory.FullName, "tools", "ffmpeg");
-                if (HasRequiredFiles(candidate, true)) return candidate;
-            }
-        }
-
-        foreach (var segment in (pathEnvironment ?? string.Empty).Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            if (HasRequiredFiles(segment, isWindows)) return Path.GetFullPath(segment);
-
-        return published;
     }
 
     private async Task<string> RunVersionCheckAsync(CancellationToken cancellationToken)
@@ -132,6 +88,7 @@ public sealed class FfmpegLocator : IFfmpegLocator
             StartInfo = new ProcessStartInfo
             {
                 FileName = FfmpegPath,
+                Arguments = "-version",
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
@@ -139,7 +96,6 @@ public sealed class FfmpegLocator : IFfmpegLocator
                 WorkingDirectory = BinaryDirectory
             }
         };
-        process.StartInfo.ArgumentList.Add("-version");
         if (!process.Start()) throw new InvalidOperationException("无法启动 FFmpeg 检测进程。");
         var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
         var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
@@ -147,9 +103,16 @@ public sealed class FfmpegLocator : IFfmpegLocator
         {
             await process.WaitForExitAsync(timeout.Token);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             TryKill(process);
+            // Cancellation of the calling startup probe must also reap its child process.
+            // Keep Process alive until exit and observe both redirected read tasks.
+            try { await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(3)); }
+            catch (Exception ex) { Log.Warning(ex, "FFmpeg validation process cleanup failed"); }
+            try { await Task.WhenAll(stdout, stderr); }
+            catch (OperationCanceledException) { }
+            cancellationToken.ThrowIfCancellationRequested();
             throw new TimeoutException("FFmpeg 启动检测超过 8 秒。");
         }
         var output = (await stdout) + (await stderr);
@@ -159,21 +122,26 @@ public sealed class FfmpegLocator : IFfmpegLocator
 
     private FfmpegValidationResult Snapshot() => new(IsAvailable, HasSharedLibraries, Version, BinaryDirectory, StatusMessage);
     private bool FilesAreComplete() => File.Exists(FfmpegPath) && File.Exists(FfprobePath) && HasSharedLibraries;
-    private string BuildFileStatus() => FilesAreComplete() ? "等待启动检测" : _isWindows ? "Windows FFmpeg Shared 文件不完整" : "未找到 Linux 系统 FFmpeg";
+    private string BuildFileStatus() => FilesAreComplete() ? "等待启动检测" : "FFmpeg 文件不完整，请重新运行 setup-ffmpeg.ps1。";
 
-    private static bool CheckPlatformLibraries(string directory, bool isWindows) =>
-        !isWindows || Directory.Exists(directory) && RequiredWindowsSharedLibraries.All(pattern => Directory.EnumerateFiles(directory, pattern, SearchOption.TopDirectoryOnly).Any());
+    private static bool CheckSharedLibraries(string directory) =>
+        Directory.Exists(directory) && RequiredSharedLibraries.All(pattern => Directory.EnumerateFiles(directory, pattern, SearchOption.TopDirectoryOnly).Any());
 
-    private static bool HasRequiredFiles(string directory, bool isWindows)
+    private static string FindBinaryDirectory()
     {
-        var names = GetExecutableNames(isWindows);
-        if (isWindows) return File.Exists(Path.Combine(directory, names.Ffmpeg)) && File.Exists(Path.Combine(directory, names.Ffprobe));
-        if (!Directory.Exists(directory)) return false;
-        var files = Directory.EnumerateFiles(directory, "*", SearchOption.TopDirectoryOnly)
-            .Select(Path.GetFileName)
-            .ToHashSet(StringComparer.Ordinal);
-        return files.Contains(names.Ffmpeg) && files.Contains(names.Ffprobe);
+        var published = Path.Combine(AppContext.BaseDirectory, "ffmpeg");
+        if (HasRequiredFiles(published)) return published;
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        for (var i = 0; i < 7 && directory is not null; i++, directory = directory.Parent)
+        {
+            var candidate = Path.Combine(directory.FullName, "tools", "ffmpeg");
+            if (HasRequiredFiles(candidate)) return candidate;
+        }
+        return published;
     }
+
+    private static bool HasRequiredFiles(string directory) =>
+        File.Exists(Path.Combine(directory, "ffmpeg.exe")) && File.Exists(Path.Combine(directory, "ffprobe.exe"));
 
     private static void TryKill(Process process)
     {

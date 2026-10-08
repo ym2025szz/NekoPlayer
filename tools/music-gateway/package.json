@@ -1,0 +1,14 @@
+{
+  "name": "neko-music-gateway",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "scripts": { "start": "node server.mjs", "test": "node --test tests/*.test.js" },
+  "dependencies": {
+    "@neteasecloudmusicapienhanced/api": "4.41.1",
+    "@sansenjian/qq-music-api": "2.6.0",
+    "kugou-music-api": "https://codeload.github.com/MakcRe/KuGouMusicApi/tar.gz/da5ccfd9304c043085a2fd18e94ebc5c315044ab",
+    "qishui-api": "https://codeload.github.com/guowenye/qishui-api/tar.gz/e409c10fe7441a10d370da7da61d62bbc1e5126c"
+  }
+}

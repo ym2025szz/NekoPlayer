@@ -1,52 +1,62 @@
 # 第三方组件声明
 
-NekoPlayer 原创代码采用 MIT License。该许可证不覆盖下列第三方组件、字体、FFmpeg 项目或第三方 FFmpeg 二进制构建。本文件根据 v1.0.0 项目文件、NuGet 包元数据与实际发布策略整理，不构成法律意见。
+NekoPlayer 原创代码采用 MIT License。MIT License 不覆盖下列第三方组件、FFmpeg 项目或第三方 FFmpeg 二进制构建。
 
 ## FFmpeg
 
-FFmpeg 项目主页：<https://ffmpeg.org/>
-FFmpeg 源代码：<https://git.ffmpeg.org/ffmpeg.git>
-
-### Windows 发布包
-
-- 构建来源：<https://github.com/BtbN/FFmpeg-Builds>
-- Release：<https://github.com/BtbN/FFmpeg-Builds/releases/tag/latest>
-- 资产：`ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip`
-- 版本：`n8.1.2-34-g9b6c8969e0-20260803`
+- FFmpeg 项目主页：https://ffmpeg.org/
+- FFmpeg 源代码：https://git.ffmpeg.org/ffmpeg.git
+- Windows 构建来源：https://github.com/BtbN/FFmpeg-Builds
+- GitHub Release：https://github.com/BtbN/FFmpeg-Builds/releases/tag/latest
+- 实际资产：`ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip`
+- 实际版本：`n8.1.2-34-g9b6c8969e0-20260802`
 - 构建类型：Windows x64、LGPL、Shared
-- 下载文件 SHA-256：`9e8e04021c8d563642c526da28c76184786cf98b44d5fc499566ecf8a8ec1c0d`
-- GitHub API digest：`sha256:9e8e04021c8d563642c526da28c76184786cf98b44d5fc499566ecf8a8ec1c0d`
+- 本地 SHA-256：`05da9f6658efc6604cb20d3fa21db3fd768e73f8f7e48c7a63c9872be3099782`
+- GitHub API digest：`sha256:05da9f6658efc6604cb20d3fa21db3fd768e73f8f7e48c7a63c9872be3099782`
+- digest 校验：已与本地 SHA-256 匹配
 
-实际 `ffmpeg.exe -L` 表明该构建依据 GNU Lesser General Public License version 3 or later 提供；`ffmpeg.exe -version` 配置包含 `--enable-shared`、`--disable-static`，未发现 `--enable-gpl` 或 `--enable-nonfree`。发布包保留构建附带的许可证资料、来源和哈希记录，位置为 `ffmpeg/licenses`、`ffmpeg/SOURCE.txt` 与 `ffmpeg/metadata.json`。
+运行 `ffmpeg.exe -L` 显示该构建依据 GNU Lesser General Public License version 3 or later 提供；`ffmpeg.exe -version` 的配置包含 `--enable-shared`、`--disable-static`，未发现 `--enable-gpl` 或 `--enable-nonfree`。
 
-BtbN 是 FFmpeg 官方下载页列出的 Windows 构建提供方之一，但仍属于第三方编译构建。选择 LGPL Shared 不自动代表已经履行 FFmpeg 及其依赖的全部许可证义务；再分发者应按自己的分发方式继续核对许可证要求。
+BtbN/FFmpeg-Builds 是 FFmpeg 官方下载页面列出的 Windows 构建提供方之一，但仍属于第三方编译构建。选择 LGPL Shared 不自动代表已经履行 FFmpeg 及其依赖的全部许可证义务。任何再分发者仍需根据实际二进制、依赖、修改情况和分发方式自行核对 LGPL 以及其他相关许可证要求。本说明不构成法律意见。
 
-### Linux 发布包
+下载包提供的许可证资料保存在发布目录的 `ffmpeg/licenses` 中，来源和哈希保存在 `ffmpeg/SOURCE.txt` 与 `ffmpeg/metadata.json` 中。
 
-Linux 包不分发 FFmpeg 可执行文件或共享库。程序从用户系统 `PATH` 查找 `ffmpeg` 与 `ffprobe`，因此 Linux 用户实际使用的 FFmpeg 版本、配置和许可证由其发行版软件源或用户选择的安装来源决定。
+## Node.js 及在线音乐网关
 
-## 运行时 NuGet 组件
+- 官方来源：[Node.js](https://nodejs.org/)；固定版本 `v24.21.0`、Windows x64
+- 官方 ZIP：[node-v24.21.0-win-x64.zip](https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip)
+- 官方校验表：[SHASUMS256.txt](https://nodejs.org/dist/v24.21.0/SHASUMS256.txt)
+- ZIP SHA-256：`158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541`
+- `node.exe` SHA-256：`ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32`
+- 官方 ZIP 中完整 `LICENSE` 的 SHA-256：`ed34dd8e3f0a78dbaf00d0444ce8e285b015b765379c2e17880455f70370f8e9`；长度 160555 字节
 
-| 组件 | 项目版本 | NuGet 元数据中的许可证 |
-| --- | ---: | --- |
-| Avalonia、Avalonia.Desktop、Avalonia.Themes.Fluent | 11.3.12 | MIT |
-| Avalonia.Fonts.Inter | 11.3.12 | MIT（包代码）；所含 Inter 字体遵循 SIL Open Font License 1.1 |
-| CommunityToolkit.Mvvm | 8.2.1 | MIT |
-| Microsoft.Extensions.Hosting | 8.0.1 | MIT |
-| Microsoft.EntityFrameworkCore.Sqlite | 8.0.20 | MIT |
-| FFMpegCore | 5.2.0 | MIT |
-| NAudio | 2.2.1 | MIT |
-| Serilog | 4.3.0 | Apache-2.0 |
-| Serilog.Extensions.Hosting | 8.0.0 | Apache-2.0 |
-| Serilog.Sinks.File | 7.0.0 | Apache-2.0 |
-| TagLibSharp | 2.3.0 | LGPL-2.1-only |
+Node.js 自身使用 MIT License；官方包内依赖还有各自的许可证与版权声明。开发目录 `tools/node/LICENSE` 和发布目录 `music-gateway/node/LICENSE` 保留官方 ZIP 内完整、未修改的许可证文件。来源与验证信息见同目录 `SOURCE.txt`、`metadata.json` 和 `SHASUMS256.txt`。ZIP 哈希同时匹配脚本内固定 digest 与官方 HTTPS 校验表；此次检查没有验证校验表签名密钥。
 
-SQLite 本体属于 public domain；项目通过 Microsoft.EntityFrameworkCore.Sqlite 与 SQLitePCLRaw 的 NuGet 依赖使用 SQLite。传递依赖仍分别受其自身许可证约束，请以发布包 `.deps.json`、对应 NuGet 包和上游仓库为准。
+在线网关直接使用以下上游 SDK。直接依赖固定版本或 Git 提交，传递依赖由 `package-lock.json` 锁定；发布包保留该文件中的来源与 npm integrity：
 
-## 开发与测试组件
+| 平台 | SDK 来源 | 固定版本或提交 |
+| --- | --- | --- |
+| 网易云音乐 | [NeteaseCloudMusicApiEnhanced](https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced) / `@neteasecloudmusicapienhanced/api` | `4.41.1` |
+| QQ 音乐 | [qq-music-api](https://github.com/sansenjian/qq-music-api) / `@sansenjian/qq-music-api` | `2.6.0` |
+| 酷狗音乐 | [KuGouMusicApi](https://github.com/MakcRe/KuGouMusicApi) / `kugou-music-api` | `da5ccfd9304c043085a2fd18e94ebc5c315044ab` |
+| 汽水音乐 | [qishui-api](https://github.com/guowenye/qishui-api) / `qishui-api` | `e409c10fe7441a10d370da7da61d62bbc1e5126c` |
 
-xUnit、xunit.runner.visualstudio、Microsoft.NET.Test.Sdk 与 coverlet.collector 仅用于开发和测试，不应进入 Release 发布目录。其 NuGet 元数据分别声明 Apache-2.0 或 MIT 类许可证。
+四个 SDK 的原始许可证、源码来源、许可证哈希和锁文件 integrity 清单保存在开发目录 `tools/music-gateway/LICENSES`，并复制到发布目录 `music-gateway/LICENSES`。网关运行依赖内的许可证文件随 `node_modules` 保留。根目录 MIT License 只覆盖本项目原创代码；不改变上述 SDK、依赖或在线平台内容的授权条件。
 
-## 项目资源
+酷我音乐采用本项目独立 Web 适配器，没有把它虚列为上述 npm SDK。适配参考来源及上游公开资源的来源记录和摘要见 `music-gateway/LICENSES/kuwo-web-source.json`；使用平台服务仍受平台内容与使用条件约束。
 
-界面中的猫耳、音符、声波、渐变和收藏按钮图形由项目代码或项目资产生成，不包含第三方角色名称、Logo、立绘或服饰图案。`Assets/AppIcon.png` 与 `Assets/NekoPlayer.ico` 是 NekoPlayer 项目发布资产。
+## 其他组件
+
+- Avalonia UI
+- CommunityToolkit.Mvvm
+- Microsoft.Extensions.Hosting 与依赖注入组件
+- Microsoft.EntityFrameworkCore.Sqlite、SQLitePCLRaw 与 SQLite
+- FFMpegCore（FFmpeg 命令行封装，不是 FFmpeg 本体）
+- NAudio（Windows 音频输出和 FFT）
+- TagLibSharp（音频标签读取）
+- Serilog 与 Serilog.Sinks.File
+- xUnit 与 Microsoft.NET.Test.Sdk
+
+这些组件分别受其自身许可证约束。使用和分发前应查看对应 NuGet 包、源码仓库和许可证文本。
+
+界面中的猫耳、音符、声波和渐变图形由项目代码绘制，不包含初音未来官方名称、Logo、立绘、服饰图案或其他官方素材。

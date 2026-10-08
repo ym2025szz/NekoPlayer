@@ -21,14 +21,15 @@ public sealed class MusicLibraryService(
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        await db.Database.EnsureCreatedAsync(cancellationToken).ConfigureAwait(false);
+        await DatabaseSchemaUpgrade.InitializeAsync(db, cancellationToken).ConfigureAwait(false);
         Log.Information("SQLite 数据库初始化完成");
     }
 
     public async Task<IReadOnlyList<Track>> GetTracksAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        return await db.Tracks.AsNoTracking().OrderBy(x => x.Title).ToListAsync(cancellationToken).ConfigureAwait(false);
+        return await db.Tracks.AsNoTracking().Where(x => x.SourceKind == TrackSourceKind.Local)
+            .OrderBy(x => x.Title).ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<Track>> GetFavoritesAsync(CancellationToken cancellationToken = default)
@@ -162,7 +163,8 @@ public sealed class MusicLibraryService(
         if (requested.Length == 0) return new LibraryRemovalResult(0, 0, []);
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-        var tracks = await db.Tracks.Where(x => requested.Contains(x.Id)).ToListAsync(cancellationToken).ConfigureAwait(false);
+        var tracks = await db.Tracks.Where(x => x.SourceKind == TrackSourceKind.Local && requested.Contains(x.Id))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
         db.Tracks.RemoveRange(tracks);
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -310,7 +312,7 @@ public sealed class MusicLibraryService(
         foreach (var batch in paths.Chunk(ExistingPathBatchSize))
         {
             var localBatch = batch.ToArray();
-            var tracks = await db.Tracks.AsNoTracking().Where(x => localBatch.Contains(x.FilePath))
+            var tracks = await db.Tracks.AsNoTracking().Where(x => x.SourceKind == TrackSourceKind.Local && localBatch.Contains(x.FilePath))
                 .ToListAsync(cancellationToken).ConfigureAwait(false);
             foreach (var track in tracks) result[WindowsPath.NormalizeFile(track.FilePath)] = track;
         }
@@ -327,6 +329,7 @@ public sealed class MusicLibraryService(
         {
             if (existing is null)
             {
+                parsed.SourceKind = TrackSourceKind.Local;
                 parsed.FilePath = WindowsPath.NormalizeFile(parsed.FilePath);
                 db.Tracks.Add(parsed);
             }
@@ -341,7 +344,8 @@ public sealed class MusicLibraryService(
 
         await using var verifyDb = await contextFactory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var confirmed = await verifyDb.Tracks.AsNoTracking().AnyAsync(
-            x => x.Id == trackId && x.FilePath == parsed.FilePath, cancellationToken).ConfigureAwait(false);
+            x => x.Id == trackId && x.SourceKind == TrackSourceKind.Local && x.FilePath == parsed.FilePath,
+            cancellationToken).ConfigureAwait(false);
         if (!confirmed) throw new InvalidOperationException("数据库保存完成，但重新查询未找到歌曲记录。");
         return trackId;
     }

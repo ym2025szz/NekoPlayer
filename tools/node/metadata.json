@@ -1,0 +1,14 @@
+{
+  "Source": "https://nodejs.org/",
+  "NodeVersion": "v24.21.0",
+  "Platform": "win-x64",
+  "ArchiveName": "node-v24.21.0-win-x64.zip",
+  "ArchiveUrl": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip",
+  "ChecksumsUrl": "https://nodejs.org/dist/v24.21.0/SHASUMS256.txt",
+  "ArchiveSha256": "158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541",
+  "OfficialSha256Verified": true,
+  "Verification": "SHA-256 matched the pinned digest and the official HTTPS SHASUMS256.txt; signature verification was not performed.",
+  "NodeExeSha256": "ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32",
+  "LicenseSha256": "ed34dd8e3f0a78dbaf00d0444ce8e285b015b765379c2e17880455f70370f8e9",
+  "InstalledAtUtc": "2026-10-07T18:25:55.6485297Z"
+}

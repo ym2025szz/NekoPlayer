@@ -5,7 +5,7 @@
 运行：
 
 ```text
-<publish-directory>\win-x64\NekoPlayer.exe
+<项目目录>\artifacts\publish\win-x64\NekoPlayer.exe
 ```
 
 ## 二、导入测试音频
@@ -13,7 +13,7 @@
 进入“本地音乐”页面，点击“添加文件夹”，选择：
 
 ```text
-<temporary-audio-directory>
+<测试音频目录>
 ```
 
 测试音频只用于本地人工验收，不会被复制到源码或最终发布目录。

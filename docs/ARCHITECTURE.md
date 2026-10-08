@@ -2,17 +2,15 @@
 
 依赖方向为 `App -> Audio / Infrastructure -> Core`。Core 保存模型、接口、队列算法、LRC 解析与可测试工具；Infrastructure 负责 SQLite、配置、路径、标签和曲库；Audio 负责 FFMpegCore 管道、有限 PCM 缓冲、NAudio 输出与频谱；App 只编排服务并展示 Avalonia MVVM 界面。
 
-Windows 音频链路：本地文件 → FFMpegCore/ffmpeg → `f32le / 48kHz / 双声道` → 有界 Channel → `BufferedWaveProvider` → NAudio `WaveOutEvent`。Seek 会先停止输出、取消并等待旧解码任务、清空缓冲，再从目标时间重新启动 FFmpeg。播放位置使用 NAudio 实际输出字节数与 Seek 起点计算。频谱从写入 NAudio 前的 Float32 PCM 抽样，不从扬声器回录。
+音频链路：本地文件 → FFMpegCore/ffmpeg → `f32le / 48kHz / 双声道` → 有界 Channel → `BufferedWaveProvider` → `WaveOutEvent`。Seek 会先停止输出、取消并等待旧解码任务、清空缓冲，再从目标时间重新启动 FFmpeg。播放位置使用 NAudio 实际输出字节数与 Seek 起点计算，不只依赖墙上时钟。频谱从写入 NAudio 前的 Float32 PCM 抽样，不从扬声器回录。
 
-Linux 音频链路由 `LinuxFfmpegAudioPlayerService` 启动系统 FFmpeg，以 `-re` 按媒体时间解码并输出到 ALSA `default` 设备。暂停会停止当前子进程并保存位置，恢复、Seek、音量或静音变化会从保存的位置建立新进程。Stop 保留当前媒体但把位置归零，Unload 才清空当前媒体。CI 通过 `NEKOPLAYER_LINUX_AUDIO_DEVICE=null` 使用 FFmpeg null muxer 验证进度、Seek、重播、切歌和资源释放；该模式不声称验证真实听感。
-
-Windows FFmpeg 运行时采用项目内 Windows x64 LGPL Shared 构建。应用会检查 `ffmpeg.exe`、`ffprobe.exe` 和关键 Shared DLL，并以超时受控的 `ffmpeg -version` 进程验证运行时可以启动。正式 Windows 发布优先使用 `AppContext.BaseDirectory\ffmpeg`，开发运行向上查找 `tools\ffmpeg`。Linux 不分发 FFmpeg 二进制，从 `PATH` 查找大小写精确的 `ffmpeg` 与 `ffprobe`。
+FFmpeg 运行时采用项目内 Windows x64 LGPL Shared 构建。应用会检查 `ffmpeg.exe`、`ffprobe.exe` 和关键 Shared DLL，并以超时受控的 `ffmpeg -version` 进程验证运行时可以启动。正式发布优先使用 `AppContext.BaseDirectory\ffmpeg`，开发运行向上查找 `tools\ffmpeg`。
 
 数据库使用短生命周期 `NekoPlayerDbContext`，由 `IDbContextFactory` 为每次操作创建，避免跨线程共享。配置使用 JSON 原子替换写入，损坏时记录日志并回退默认值。
 
 ## 导入数据流
 
-文件选择/文件夹扫描 → 后台枚举与平台路径规范化 → 批量查询已存在路径 → 后台 TagLib 与封面处理 → 20 秒超时的 FFprobe 分析 → 短生命周期 DbContext 保存 → 独立 DbContext 重新查询确认 → ViewModel 刷新 `_allTracks` → Avalonia UI 线程更新 `ObservableCollection` → 确认列表数据后生成结果提示。
+文件选择/文件夹扫描 → 后台枚举与 Windows 路径规范化 → 批量查询已存在路径 → 后台 TagLib 与封面处理 → 20 秒超时的 FFprobe 分析 → 短生命周期 DbContext 保存 → 独立 DbContext 重新查询确认 → ViewModel 刷新 `_allTracks` → Avalonia UI 线程更新 `ObservableCollection` → 确认列表数据后生成结果提示。
 
 导入状态使用单一 `ImportStage` 状态流：`Idle → Enumerating → ReadingMetadata → AnalyzingMedia → Saving → RefreshingLibrary → Completed`。取消进入 `Cancelled`，完整失败进入 `Failed`，不再依赖多个可能互相矛盾的布尔值判断当前阶段。`ImportProgress` 同时携带发现、处理、新增、更新、跳过、失败数量和当前文件名。
 
@@ -92,14 +90,8 @@ ViewModel 中 `SeekSeconds` 是可见预览值，音频服务 `Position` 是真�
 
 `TrackCover` 统一用于本地音乐/搜索结果、喜欢、最近播放、歌单详情、播放队列、正在播放页、歌曲选择器和 Compact/Standard/Wide 底部播放栏。默认图标使用 `Stretch=Uniform` 保持纵横比，真实封面使用 `UniformToFill`；圆角裁剪由同一控件处理。已有无封面歌曲不需要重新导入，页面绑定现有空 `CoverCachePath` 时会立即走 UI 回退。
 
-自动 GUI 验证可仅对子进程设置 `NEKOPLAYER_DATA_ROOT`，让 `UserDataPaths` 使用显式绝对临时根目录；普通 Windows 启动未设置该变量时仍使用 `%LocalAppData%\NekoPlayer`。Linux 普通启动分别使用 `${XDG_DATA_HOME:-~/.local/share}/NekoPlayer`、`${XDG_CONFIG_HOME:-~/.config}/NekoPlayer` 与 `${XDG_CACHE_HOME:-~/.cache}/NekoPlayer`。该开关不修改系统环境变量，主要用于避免播放、收藏和歌单 GUI 回归污染正式 SQLite。
+自动 GUI 验证可仅对子进程设置 `NEKOPLAYER_DATA_ROOT`，让 `UserDataPaths` 使用显式绝对临时根目录；普通启动未设置该变量时仍使用 `%LocalAppData%\NekoPlayer`。该开关不修改系统环境变量，发布版用户数据语义不变，主要用于避免播放、收藏和歌单 GUI 回归污染正式 SQLite。
 
 ## v1.0.0 版本展示与发布资源
 
 产品、包和信息版本为 `1.0.0`，程序集与 Windows FileVersion 为 `1.0.0.0`。面向用户的左下角与设置页只显示 `v1.0.0`，不显示版本名称、开发代号、阶段说明或 ProductVersion/FileVersion 双重信息；设置页继续保留“创作者：梦怀殇”。发布脚本检查 Windows 文件属性、FFmpeg Shared、`NekoPlayer.deps.json` 中不存在 `Avalonia.Diagnostics`，并验证 AppIcon 的 AvaloniaResource 声明。历史 v0.1.4 验收文档和技术章节保留，不改名冒充 v1.0.0。
-
-## 跨平台外部操作与发布
-
-文件和文件夹选择继续使用 Avalonia `StorageProvider`。打开目录由 `PlatformLauncher` 构造不经 shell 拼接的参数列表：Windows 使用 `explorer.exe`，Linux 使用 `xdg-open`，带空格路径作为单独参数传递。
-
-Windows 与 Linux 均为 .NET 8 self-contained、`PublishTrimmed=false` 发布。Windows ZIP 包含 FFmpeg Shared 运行时；Linux tar.gz 包含可选的用户级安装/卸载脚本，但不包含 Windows EXE 或 FFmpeg DLL。Ubuntu CI 负责 ELF、`ldd`、Xvfb、XDG、中文与空格路径、导入重复检测、播放管线和卸载保留数据验证。

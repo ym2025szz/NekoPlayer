@@ -18,10 +18,11 @@ public partial class PlaylistChoiceViewModel(Playlist playlist, bool alreadyCont
     [ObservableProperty] private bool isSelected;
 }
 
-public sealed class QueueItemViewModel(int displayIndex, Track track, bool isCurrent)
+public partial class QueueItemViewModel(int displayIndex, Track track, bool isCurrent) : ObservableObject
 {
-    public int DisplayIndex { get; } = displayIndex;
-    public Track Track { get; } = track;
-    public bool IsCurrent { get; } = isCurrent;
+    [ObservableProperty] private int displayIndex = displayIndex;
+    [ObservableProperty] private Track track = track;
+    [ObservableProperty] private bool isCurrent = isCurrent;
     public string PlayAutomationName => $"立即播放：{Track.Title}";
+    partial void OnTrackChanged(Track value) => OnPropertyChanged(nameof(PlayAutomationName));
 }

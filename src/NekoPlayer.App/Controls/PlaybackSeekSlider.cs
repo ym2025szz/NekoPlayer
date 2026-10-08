@@ -1,4 +1,7 @@
 using Avalonia;
+using Avalonia.Automation;
+using Avalonia.Automation.Peers;
+using Avalonia.Automation.Provider;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -12,6 +15,7 @@ public sealed class PlaybackSeekSlider : TemplatedControl
     private const double TrackHeight = 4;
     private const double ThumbDiameter = 12;
     private IPointer? _activePointer;
+    private PlaybackSeekSliderAutomationPeer? _automationPeer;
 
     public static readonly StyledProperty<double> MinimumProperty =
         AvaloniaProperty.Register<PlaybackSeekSlider, double>(nameof(Minimum));
@@ -89,6 +93,21 @@ public sealed class PlaybackSeekSlider : TemplatedControl
     public event EventHandler<SeekValueEventArgs>? SeekCancelled;
 
     private bool CanInteract => IsEnabled && double.IsFinite(Maximum) && double.IsFinite(Minimum) && Maximum > Minimum;
+
+    protected override AutomationPeer OnCreateAutomationPeer() =>
+        _automationPeer = new PlaybackSeekSliderAutomationPeer(this);
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        var property = change.Property == ValueProperty ? RangeValuePatternIdentifiers.ValueProperty
+            : change.Property == MinimumProperty ? RangeValuePatternIdentifiers.MinimumProperty
+            : change.Property == MaximumProperty ? RangeValuePatternIdentifiers.MaximumProperty : null;
+        if (property is not null)
+            _automationPeer?.RaisePropertyChangedEvent(property, change.OldValue, change.NewValue);
+        if (change.Property == IsEnabledProperty || change.Property == MinimumProperty || change.Property == MaximumProperty)
+            _automationPeer?.RaisePropertyChangedEvent(RangeValuePatternIdentifiers.IsReadOnlyProperty, null, !CanInteract);
+    }
 
     public override void Render(DrawingContext context)
     {
@@ -199,7 +218,7 @@ public sealed class PlaybackSeekSlider : TemplatedControl
         if (!double.IsFinite(target)) return;
 
         SeekStarted?.Invoke(this, new SeekValueEventArgs(Value));
-        Value = Math.Clamp(target, Minimum, Maximum);
+        SetCurrentValue(ValueProperty, Math.Clamp(target, Minimum, Maximum));
         SeekPreviewChanged?.Invoke(this, new SeekValueEventArgs(Value));
         SeekCompleted?.Invoke(this, new SeekValueEventArgs(Value));
         e.Handled = true;
@@ -213,8 +232,35 @@ public sealed class PlaybackSeekSlider : TemplatedControl
 
     private void UpdatePreview(double x)
     {
-        Value = SeekPointerMath.ValueFromX(x, Bounds.Width, Minimum, Maximum);
+        SetCurrentValue(ValueProperty, SeekPointerMath.ValueFromX(x, Bounds.Width, Minimum, Maximum));
         SeekPreviewChanged?.Invoke(this, new SeekValueEventArgs(Value));
+    }
+
+    private sealed class PlaybackSeekSliderAutomationPeer(PlaybackSeekSlider owner)
+        : ControlAutomationPeer(owner), IRangeValueProvider
+    {
+        protected override string GetClassNameCore() => nameof(PlaybackSeekSlider);
+        protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Slider;
+        protected override string GetLocalizedControlTypeCore() => "播放进度";
+        protected override string? GetHelpTextCore() => "以秒为单位；方向键移动 5 秒，Shift 加方向键移动 15 秒。";
+        public bool IsReadOnly => !owner.CanInteract;
+        public double Minimum => double.IsFinite(owner.Minimum) ? owner.Minimum : 0;
+        public double Maximum => double.IsFinite(owner.Maximum) ? Math.Max(Minimum, owner.Maximum) : Minimum;
+        public double Value => double.IsFinite(owner.Value) ? Math.Clamp(owner.Value, Minimum, Maximum) : Minimum;
+        public double SmallChange => 5;
+        public double LargeChange => 15;
+
+        public void SetValue(double value)
+        {
+            EnsureEnabled();
+            if (IsReadOnly) throw new InvalidOperationException("当前播放进度不可调整。");
+            if (!double.IsFinite(value) || value < Minimum || value > Maximum)
+                throw new ArgumentOutOfRangeException(nameof(value));
+            owner.SeekStarted?.Invoke(owner, new SeekValueEventArgs(owner.Value));
+            owner.SetCurrentValue(ValueProperty, value);
+            owner.SeekPreviewChanged?.Invoke(owner, new SeekValueEventArgs(value));
+            owner.SeekCompleted?.Invoke(owner, new SeekValueEventArgs(value));
+        }
     }
 }
 

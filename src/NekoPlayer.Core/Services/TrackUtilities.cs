@@ -1,4 +1,5 @@
 using NekoPlayer.Core.Models;
+using System.Text;
 
 namespace NekoPlayer.Core.Services;
 
@@ -63,12 +64,40 @@ public static class MetadataFallback
 
 public static class TrackSearch
 {
+    public static string NormalizeQuery(string? query) => string.IsNullOrWhiteSpace(query)
+        ? string.Empty
+        : string.Join(" ", query.Normalize(NormalizationForm.FormKC)
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
     public static bool Matches(Track track, string? query)
     {
-        if (string.IsNullOrWhiteSpace(query)) return true;
-        return track.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-               track.Artist.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-               track.Album.Contains(query, StringComparison.OrdinalIgnoreCase);
+        var normalized = NormalizeQuery(query);
+        if (normalized.Length == 0) return true;
+        var fields = new[] { NormalizeQuery(track.Title), NormalizeQuery(track.Artist), NormalizeQuery(track.Album) };
+        return normalized.Split(' ').All(term => fields.Any(field => field.Contains(term, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    public static int RelevanceScore(Track track, string? query)
+    {
+        var normalized = NormalizeQuery(query);
+        if (normalized.Length == 0) return 0;
+        if (!Matches(track, normalized)) return -1;
+        var title = NormalizeQuery(track.Title);
+        var artist = NormalizeQuery(track.Artist);
+        var album = NormalizeQuery(track.Album);
+        var score = title.Equals(normalized, StringComparison.OrdinalIgnoreCase) ? 1000
+            : title.StartsWith(normalized, StringComparison.OrdinalIgnoreCase) ? 500
+            : title.Contains(normalized, StringComparison.OrdinalIgnoreCase) ? 250 : 0;
+        foreach (var term in normalized.Split(' '))
+        {
+            if (title.Equals(term, StringComparison.OrdinalIgnoreCase)) score += 100;
+            else if (title.StartsWith(term, StringComparison.OrdinalIgnoreCase)) score += 60;
+            else if (title.Contains(term, StringComparison.OrdinalIgnoreCase)) score += 40;
+            if (artist.Equals(term, StringComparison.OrdinalIgnoreCase)) score += 30;
+            else if (artist.Contains(term, StringComparison.OrdinalIgnoreCase)) score += 20;
+            if (album.Contains(term, StringComparison.OrdinalIgnoreCase)) score += 10;
+        }
+        return score;
     }
 }
 

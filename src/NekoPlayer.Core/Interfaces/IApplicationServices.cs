@@ -60,6 +60,8 @@ public interface IPlaylistService
     Task AddTrackAsync(Guid playlistId, Guid trackId, CancellationToken cancellationToken = default);
     Task<PlaylistAddResult> AddTracksAsync(Guid playlistId, IEnumerable<Guid> trackIds, CancellationToken cancellationToken = default);
     Task RemoveTrackAsync(Guid playlistId, Guid trackId, CancellationToken cancellationToken = default);
+    /// <summary>Moves a member to its final zero-based index in the full playlist, clamping to its bounds. Missing members are ignored.</summary>
+    Task MoveTrackAsync(Guid playlistId, Guid trackId, int targetIndex, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Track>> GetTracksAsync(Guid playlistId, CancellationToken cancellationToken = default);
     Task<IReadOnlySet<Guid>> GetTrackIdsAsync(Guid playlistId, CancellationToken cancellationToken = default);
 }
