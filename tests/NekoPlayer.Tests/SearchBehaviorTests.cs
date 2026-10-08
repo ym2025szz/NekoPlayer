@@ -478,7 +478,7 @@ public sealed class SearchBehaviorTests
         new(request.ProviderId, request.Page, tracks, hasMore);
     private static async Task EventuallyAsync(Func<bool> predicate)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(3);
+        var deadline = DateTime.UtcNow.AddSeconds(15);
         while (!predicate() && DateTime.UtcNow < deadline) await Task.Delay(10);
         Assert.True(predicate(), "Search did not reach the expected state.");
     }

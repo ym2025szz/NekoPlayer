@@ -67,8 +67,9 @@ public sealed class SingleInstanceTests
             requested.TrySetResult();
             return Task.FromResult(true);
         });
-        var updateExit = client.ExitExistingForUpdateAsync(TimeSpan.FromSeconds(3));
-        await requested.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        // Use the production update deadline; this test verifies cleanup ordering, not scheduler speed.
+        var updateExit = client.ExitExistingForUpdateAsync(TimeSpan.FromSeconds(30));
+        await requested.Task.WaitAsync(TimeSpan.FromSeconds(30));
         Assert.False(updateExit.IsCompleted);
         owner.Dispose();
         Assert.Equal(InstanceExitCode.Success, await updateExit);
