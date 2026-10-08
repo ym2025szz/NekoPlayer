@@ -1,4 +1,15 @@
-// These suites share native UI initialization and launch real decoder/IPC fixtures.
-// Bound unrelated suite concurrency on two-core hosted Windows runners; individual
-// tests still exercise their own concurrent calls and cancellation races.
-[assembly: Xunit.CollectionBehavior(MaxParallelThreads = 2)]
+// Native UI initialization and real decoder/pipe fixtures share process resources.
+// Serialize independent suites; concurrency scenarios remain parallel inside their tests.
+[assembly: Xunit.CollectionBehavior(DisableTestParallelization = true)]
+
+internal static class NativeFixtureThreadPool
+{
+    [System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void Initialize()
+    {
+        // Pipe/process fixtures can occupy workers while async readiness and debounce
+        // continuations need another worker. Avoid pool starvation on two-core runners.
+        ThreadPool.GetMinThreads(out var workers, out var completionPorts);
+        ThreadPool.SetMinThreads(Math.Max(workers, 32), completionPorts);
+    }
+}
